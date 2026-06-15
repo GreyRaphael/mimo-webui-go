@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -82,10 +81,6 @@ func VideoUnderstandingHandler(client *mimo.Client, uploadDir string) gin.Handle
 		var chatResp mimo.ChatResponse
 		if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "decode response: " + err.Error()})
-			return
-		}
-		if resp.StatusCode != http.StatusOK {
-			c.JSON(resp.StatusCode, gin.H{"error": fmt.Sprintf("api returned status %d", resp.StatusCode)})
 			return
 		}
 		c.JSON(http.StatusOK, chatResp)

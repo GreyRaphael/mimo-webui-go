@@ -477,7 +477,6 @@ function chatApp() {
                 active: true, controller: null, rafId: null
             };
 
-            let mediaUrl = null;
             let mediaType = null;
             let mediaFileId = null;
             let mediaPreviewUrl = null;
@@ -490,7 +489,6 @@ function chatApp() {
                     const uploadResp = await fetch('/api/upload', { method: 'POST', body: form });
                     if (uploadResp.ok) {
                         const data = await uploadResp.json();
-                        mediaUrl = data.temp_path;
                         mediaType = this.attachedMediaType;
                         mediaFileId = data.file_id;
                         mediaPreviewUrl = '/api/media/' + data.file_id;
@@ -515,7 +513,7 @@ function chatApp() {
 
             try {
                 const body = { content: content, stream: true };
-                if (mediaUrl) {
+                if (mediaFileId) {
                     body.media_url = mediaFileId;
                     body.media_type = mediaType;
                 }
