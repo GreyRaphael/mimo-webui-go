@@ -33,6 +33,7 @@ type AuthConfig struct {
 	JWTExpiryHours   int    `toml:"jwt_expiry_hours"`
 	OpenRegistration bool   `toml:"open_registration"`
 	MaxUsers         int    `toml:"max_users"`
+	AdminPassword    string `toml:"admin_password"`
 }
 
 type UploadConfig struct {

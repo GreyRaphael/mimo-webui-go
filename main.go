@@ -49,7 +49,7 @@ func main() {
 	defer database.Close()
 
 	// Create default admin if no users exist
-	if err := ensureDefaultAdmin(database); err != nil {
+	if err := ensureDefaultAdmin(database, cfg.Auth.AdminPassword); err != nil {
 		log.Fatalf("ensure default admin: %v", err)
 	}
 
@@ -152,7 +152,7 @@ func setupRoutes(r *gin.Engine, database *db.DB, client *mimo.Client, cfg *confi
 	}
 }
 
-func ensureDefaultAdmin(database *db.DB) error {
+func ensureDefaultAdmin(database *db.DB, adminPassword string) error {
 	ctx := context.Background()
 	count, err := db.CountUsers(ctx, database)
 	if err != nil {
@@ -162,14 +162,21 @@ func ensureDefaultAdmin(database *db.DB) error {
 		return nil
 	}
 
-	hash, err := auth.HashPassword("admin123")
+	if adminPassword == "" {
+		adminPassword = "admin123"
+		log.Println("[init] ⚠️  未配置 admin_password，使用默认密码 admin123")
+	}
+
+	hash, err := auth.HashPassword(adminPassword)
 	if err != nil {
 		return err
 	}
 	if _, err := db.CreateUser(ctx, database, "admin", hash, "admin"); err != nil {
 		return err
 	}
-	log.Println("[init] Created default admin user: admin / admin123")
-	log.Println("[init] ⚠️  请登录后立即修改密码！")
+	log.Println("[init] Created default admin user: admin")
+	if adminPassword == "admin123" {
+		log.Println("[init] ⚠️  请登录后立即修改密码！")
+	}
 	return nil
 }

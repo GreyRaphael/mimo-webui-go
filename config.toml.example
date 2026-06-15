@@ -16,6 +16,7 @@ jwt_secret = "change-me-to-random-string"              # 生产环境请改为�
 jwt_expiry_hours = 24
 open_registration = false
 max_users = 10
+admin_password = "change-me"                            # 首次启动创建 admin 账户的密码
 
 [upload]
 max_image_mb = 50
