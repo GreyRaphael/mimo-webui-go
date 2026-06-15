@@ -1,0 +1,290 @@
+{{define "pages/image.html"}}
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiMo WebUI</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="/static/css/custom.css">
+    <script src="/static/js/app.js"></script>
+</head>
+<body class="h-full bg-gray-900 text-gray-100">
+    <div class="flex h-full">
+<aside class="w-56 bg-gray-800 border-r border-gray-700 flex flex-col shrink-0">
+    <div class="p-4 border-b border-gray-700">
+        <h1 class="text-lg font-bold text-blue-400">🤖 MiMo WebUI</h1>
+    </div>
+    <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+        <a href="/chat" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>💬</span> 对话
+        </a>
+        <a href="/image" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🖼️</span> 图片理解
+        </a>
+        <a href="/audio" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🎵</span> 音频理解
+        </a>
+        <a href="/video" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🎬</span> 视频理解
+        </a>
+        <a href="/asr" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🎤</span> 语音识别
+        </a>
+        <a href="/tts" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🔊</span> 语音合成
+        </a>
+    </nav>
+    <div class="p-3 border-t border-gray-700 text-sm text-gray-400">
+        {{if .user}}
+        <div class="flex items-center justify-between">
+            <span>👤 {{.user.Username}}</span>
+            <a href="/login" class="text-red-400 hover:text-red-300" onclick="document.cookie='token=;path=/;max-age=0'">退出</a>
+        </div>
+        {{end}}
+    </div>
+</aside>
+
+        <main class="flex-1 flex flex-col overflow-hidden">
+<div class="flex flex-col h-full overflow-y-auto p-6" x-data="imageApp()">
+    <div class="max-w-4xl mx-auto w-full space-y-6">
+        <h2 class="text-2xl font-bold text-blue-400 flex items-center gap-2">
+            🖼️ 图片理解
+        </h2>
+
+        <!-- Upload Area -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- File Upload -->
+            <div class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                <h3 class="text-sm font-medium text-gray-300 mb-3">上传图片</h3>
+                <div @dragover.prevent="dragging = true"
+                    @dragleave.prevent="dragging = false"
+                    @drop.prevent="handleDrop($event)"
+                    :class="dragging ? 'border-blue-500 bg-blue-500/10' : 'border-gray-600'"
+                    class="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition"
+                    @click="$refs.fileInput.click()">
+                    <input type="file" x-ref="fileInput" accept="image/*" class="hidden" @change="handleFile($event)">
+                    <p class="text-gray-400 text-sm">
+                        <span x-show="!fileName">拖拽图片到此处，或点击选择</span>
+                        <span x-show="fileName" class="text-blue-400 flex items-center justify-center gap-2">
+                            <span x-text="fileName"></span>
+                            <button @click.stop="clearFile()" class="text-gray-500 hover:text-red-400">✕</button>
+                        </span>
+                    </p>
+                </div>
+                <div x-show="uploading" class="mt-2">
+                    <div class="w-full bg-gray-700 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full transition-all" style="width: 100%"></div>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">上传中...</p>
+                </div>
+            </div>
+
+            <!-- URL Input -->
+            <div class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                <h3 class="text-sm font-medium text-gray-300 mb-3">图片 URL</h3>
+                <div class="flex gap-2">
+                    <input type="url" x-model="imageUrl"
+                        class="flex-1 px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-gray-100 text-sm placeholder-gray-500"
+                        placeholder="https://example.com/image.jpg">
+                    <button x-show="imageUrl" @click="clearUrl()" class="px-3 py-2 text-gray-400 hover:text-red-400 transition">✕</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Preview -->
+        <div x-show="previewUrl" class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+            <h3 class="text-sm font-medium text-gray-300 mb-3">预览</h3>
+            <img :src="previewUrl" class="max-h-80 rounded-lg mx-auto" x-show="previewUrl">
+        </div>
+
+        <!-- Prompt -->
+        <div class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+            <h3 class="text-sm font-medium text-gray-300 mb-3">提示词</h3>
+            <textarea x-model="prompt" rows="3"
+                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-gray-100 text-sm placeholder-gray-500 resize-none"
+                placeholder="描述你想了解的图片内容... (留空则使用默认提示)"></textarea>
+        </div>
+
+        <!-- Submit -->
+        <button @click="submit()" :disabled="loading || (!fileId && !imageUrl)"
+            class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition">
+            <span x-show="!loading">开始分析</span>
+            <span x-show="loading">分析中...</span>
+        </button>
+
+        <!-- Reasoning -->
+        <div x-show="reasoning" class="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
+            <details open>
+                <summary class="text-sm font-medium text-gray-400 cursor-pointer hover:text-gray-300 select-none">💭 推理过程</summary>
+                <div class="mt-2 text-sm text-gray-400 prose prose-invert prose-sm max-w-none opacity-80" x-html="renderMarkdown(reasoning)"></div>
+            </details>
+        </div>
+
+        <!-- Result -->
+        <div x-show="result" class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+            <h3 class="text-sm font-medium text-gray-300 mb-3">分析结果</h3>
+            <div class="prose prose-invert prose-sm max-w-none message-content" x-html="renderMarkdown(result)"></div>
+        </div>
+
+        <!-- Error -->
+        <div x-show="error" class="p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-300 text-sm" x-text="error"></div>
+    </div>
+</div>
+
+<script>
+// Standalone SSE parser
+function parseSSEStream(reader, callbacks) {
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let eventType = 'message';
+
+    return new Promise((resolve, reject) => {
+        function processChunk({ done, value }) {
+            if (done) { if (callbacks.onDone) callbacks.onDone(); resolve(); return; }
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+            for (const line of lines) {
+                if (line.startsWith('event:') || line.startsWith('event: ')) {
+                    eventType = line.startsWith('event: ') ? line.slice(7).trim() : line.slice(6).trim();
+                    continue;
+                }
+                if (line.startsWith('data:') || line.startsWith('data: ')) {
+                    const data = line.startsWith('data: ') ? line.slice(6) : line.slice(5);
+                    if (data === '[DONE]') { if (callbacks.onDone) callbacks.onDone(); resolve(); return; }
+                    if (eventType === 'reasoning' && callbacks.onReasoning) callbacks.onReasoning(data);
+                    else if (callbacks.onMessage) callbacks.onMessage(data);
+                    eventType = 'message';
+                }
+            }
+            reader.read().then(processChunk).catch(reject);
+        }
+        reader.read().then(processChunk).catch(reject);
+    });
+}
+
+function imageApp() {
+    return {
+        fileId: '',
+        fileName: '',
+        imageUrl: '',
+        previewUrl: '',
+        prompt: '',
+        result: '',
+        reasoning: '',
+        error: '',
+        loading: false,
+        uploading: false,
+        dragging: false,
+
+        handleFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            this.uploadFile(file);
+        },
+
+        handleDrop(e) {
+            this.dragging = false;
+            const file = e.dataTransfer.files[0];
+            if (file) this.uploadFile(file);
+        },
+
+        async uploadFile(file) {
+            this.fileName = file.name;
+            this.uploading = true;
+            this.error = '';
+            try {
+                const form = new FormData();
+                form.append('file', file);
+                const resp = await fetch('/api/upload', { method: 'POST', body: form });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.error || 'Upload failed');
+                }
+                const data = await resp.json();
+                this.fileId = data.file_id;
+                this.previewUrl = URL.createObjectURL(file);
+            } catch (e) {
+                this.error = '上传失败: ' + e.message;
+            } finally {
+                this.uploading = false;
+            }
+        },
+
+        async submit() {
+            if (!this.fileId && !this.imageUrl) return;
+            this.loading = true;
+            this.result = '';
+            this.reasoning = '';
+            this.error = '';
+
+            try {
+                const body = {
+                    prompt: this.prompt || '请详细描述这张图片的内容，包括所有可见的元素、文字、颜色、布局等信息',
+                    stream: true
+                };
+                if (this.fileId) body.file_id = this.fileId;
+                else body.url = this.imageUrl;
+
+                const resp = await fetch('/api/image', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.error || 'Analysis failed');
+                }
+
+                // SSE streaming
+                const reader = resp.body.getReader();
+                await parseSSEStream(reader, {
+                    onReasoning: (data) => { this.reasoning += data; },
+                    onMessage: (data) => {
+                        this.result += data;
+                    }
+                });
+            } catch (e) {
+                this.error = e.message;
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        clearFile() {
+            this.fileId = '';
+            this.fileName = '';
+            this.previewUrl = '';
+        },
+
+        clearUrl() {
+            this.imageUrl = '';
+        },
+
+        renderMarkdown(text) {
+            if (!text) return '';
+            if (typeof marked !== 'undefined') {
+                try {
+                    if (!this._markedConfigured) {
+                        marked.setOptions({ breaks: true, gfm: true });
+                        this._markedConfigured = true;
+                    }
+                    return marked.parse(text);
+                } catch(e) { return text.replace(/\n/g, '<br>'); }
+            }
+            return text.replace(/\n/g, '<br>');
+        }
+    };
+}
+</script>
+        </main>
+    </div>
+</body>
+</html>
+{{end}}

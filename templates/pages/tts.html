@@ -1,0 +1,279 @@
+{{define "pages/tts.html"}}
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiMo WebUI</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="/static/css/custom.css">
+    <script src="/static/js/app.js"></script>
+</head>
+<body class="h-full bg-gray-900 text-gray-100">
+    <div class="flex h-full">
+<aside class="w-56 bg-gray-800 border-r border-gray-700 flex flex-col shrink-0">
+    <div class="p-4 border-b border-gray-700">
+        <h1 class="text-lg font-bold text-blue-400">🤖 MiMo WebUI</h1>
+    </div>
+    <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+        <a href="/chat" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>💬</span> 对话
+        </a>
+        <a href="/image" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🖼️</span> 图片理解
+        </a>
+        <a href="/audio" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🎵</span> 音频理解
+        </a>
+        <a href="/video" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🎬</span> 视频理解
+        </a>
+        <a href="/asr" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🎤</span> 语音识别
+        </a>
+        <a href="/tts" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🔊</span> 语音合成
+        </a>
+    </nav>
+    <div class="p-3 border-t border-gray-700 text-sm text-gray-400">
+        {{if .user}}
+        <div class="flex items-center justify-between">
+            <span>👤 {{.user.Username}}</span>
+            <a href="/login" class="text-red-400 hover:text-red-300" onclick="document.cookie='token=;path=/;max-age=0'">退出</a>
+        </div>
+        {{end}}
+    </div>
+</aside>
+
+        <main class="flex-1 flex flex-col overflow-hidden">
+<div class="flex flex-col h-full overflow-y-auto p-6" x-data="ttsApp()">
+    <div class="max-w-4xl mx-auto w-full space-y-6">
+        <h2 class="text-2xl font-bold text-blue-400 flex items-center gap-2">
+            🔊 语音合成 (TTS)
+        </h2>
+
+        <!-- Mode Tabs -->
+        <div class="flex gap-1 bg-gray-800 rounded-xl p-1 border border-gray-700">
+            <button @click="mode = 'preset'"
+                :class="mode === 'preset' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'"
+                class="flex-1 py-2 rounded-lg text-sm font-medium transition">
+                预设音色
+            </button>
+            <button @click="mode = 'design'"
+                :class="mode === 'design' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'"
+                class="flex-1 py-2 rounded-lg text-sm font-medium transition">
+                声音设计
+            </button>
+            <button @click="mode = 'clone'"
+                :class="mode === 'clone' ? 'bg-blue-600 text-white' : 'text-gray-400 hover:text-gray-200'"
+                class="flex-1 py-2 rounded-lg text-sm font-medium transition">
+                声音克隆
+            </button>
+        </div>
+
+        <!-- Preset Mode -->
+        <div x-show="mode === 'preset'" class="space-y-4">
+            <div class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                <label class="text-sm font-medium text-gray-300 mb-2 block">选择音色</label>
+                <select x-model="voice"
+                    class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-gray-100 text-sm">
+                    <option value="冰糖">冰糖 (中文 · 女性)</option>
+                    <option value="茉莉">茉莉 (中文 · 女性)</option>
+                    <option value="苏打">苏打 (中文 · 男性)</option>
+                    <option value="白桦">白桦 (中文 · 男性)</option>
+                    <option value="Mia">Mia (英文 · 女性)</option>
+                    <option value="Chloe">Chloe (英文 · 女性)</option>
+                    <option value="Milo">Milo (英文 · 男性)</option>
+                    <option value="Dean">Dean (英文 · 男性)</option>
+                </select>
+            </div>
+        </div>
+
+        <!-- Voice Design Mode -->
+        <div x-show="mode === 'design'" class="space-y-4">
+            <div class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                <label class="text-sm font-medium text-gray-300 mb-2 block">
+                    声音描述 <span class="text-red-400">*</span>
+                </label>
+                <textarea x-model="voiceDescription" rows="3"
+                    class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-gray-100 text-sm placeholder-gray-500 resize-none"
+                    placeholder="描述你想要的声音特征，例如：年轻女性，声音甜美，语速适中..."></textarea>
+            </div>
+        </div>
+
+        <!-- Voice Clone Mode -->
+        <div x-show="mode === 'clone'" class="space-y-4">
+            <div class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+                <label class="text-sm font-medium text-gray-300 mb-2 block">上传参考音频</label>
+                <div @dragover.prevent="dragging = true"
+                    @dragleave.prevent="dragging = false"
+                    @drop.prevent="handleDrop($event)"
+                    :class="dragging ? 'border-blue-500 bg-blue-500/10' : 'border-gray-600'"
+                    class="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition"
+                    @click="$refs.cloneFileInput.click()">
+                    <input type="file" x-ref="cloneFileInput" accept="audio/*" class="hidden" @change="handleFile($event)">
+                    <p class="text-gray-400 text-sm">
+                        <span x-show="!cloneFileName">拖拽参考音频到此处，或点击选择</span>
+                        <span x-show="cloneFileName" class="text-blue-400" x-text="cloneFileName"></span>
+                    </p>
+                </div>
+                <div x-show="uploading" class="mt-2">
+                    <div class="w-full bg-gray-700 rounded-full h-2">
+                        <div class="bg-blue-500 h-2 rounded-full transition-all" style="width: 100%"></div>
+                    </div>
+                    <p class="text-xs text-gray-400 mt-1">上传中...</p>
+                </div>
+                <audio x-show="clonePreviewUrl" :src="clonePreviewUrl" controls class="w-full mt-3"></audio>
+            </div>
+        </div>
+
+        <!-- Style Instruction (all modes) -->
+        <div class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+            <label class="text-sm font-medium text-gray-300 mb-2 block">风格指令 (可选)</label>
+            <textarea x-model="styleInstruction" rows="2"
+                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-gray-100 text-sm placeholder-gray-500 resize-none"
+                placeholder="例如：用欢快的语气朗读"></textarea>
+        </div>
+
+        <!-- Target Text -->
+        <div class="bg-gray-800 rounded-xl p-4 border border-gray-700">
+            <label class="text-sm font-medium text-gray-300 mb-2 block">
+                合成文本 <span class="text-red-400">*</span>
+            </label>
+            <textarea x-model="text" rows="5"
+                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-gray-100 text-sm placeholder-gray-500 resize-none"
+                placeholder="输入要合成的文本内容..."></textarea>
+        </div>
+
+        <!-- Submit -->
+        <button @click="submit()" :disabled="loading || !text || (mode === 'design' && !voiceDescription) || (mode === 'clone' && !cloneFileId)"
+            class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition">
+            <span x-show="!loading">合成语音</span>
+            <span x-show="loading">合成中...</span>
+        </button>
+
+        <!-- Audio Output -->
+        <div x-show="audioSrc" class="bg-gray-800 rounded-xl p-6 border border-gray-700">
+            <h3 class="text-sm font-medium text-gray-300 mb-3">合成结果</h3>
+            <audio :src="audioSrc" controls class="w-full"></audio>
+        </div>
+
+        <!-- Error -->
+        <div x-show="error" class="p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-300 text-sm" x-text="error"></div>
+    </div>
+</div>
+
+<script>
+function ttsApp() {
+    return {
+        mode: 'preset',
+        voice: '冰糖',
+        voiceDescription: '',
+        styleInstruction: '',
+        text: '',
+        cloneFileId: '',
+        cloneFileName: '',
+        clonePreviewUrl: '',
+        audioSrc: '',
+        error: '',
+        loading: false,
+        uploading: false,
+        dragging: false,
+
+        handleFile(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            this.uploadFile(file);
+        },
+
+        handleDrop(e) {
+            this.dragging = false;
+            const file = e.dataTransfer.files[0];
+            if (file) this.uploadFile(file);
+        },
+
+        async uploadFile(file) {
+            this.cloneFileName = file.name;
+            this.uploading = true;
+            this.error = '';
+            try {
+                const form = new FormData();
+                form.append('file', file);
+                const resp = await fetch('/api/upload', { method: 'POST', body: form });
+                if (!resp.ok) {
+                    const err = await resp.json();
+                    throw new Error(err.error || 'Upload failed');
+                }
+                const data = await resp.json();
+                this.cloneFileId = data.file_id;
+                this.clonePreviewUrl = URL.createObjectURL(file);
+            } catch (e) {
+                this.error = '上传失败: ' + e.message;
+            } finally {
+                this.uploading = false;
+            }
+        },
+
+        async submit() {
+            if (!this.text) return;
+            if (this.mode === 'design' && !this.voiceDescription) return;
+            if (this.mode === 'clone' && !this.cloneFileId) return;
+
+            this.loading = true;
+            this.audioSrc = '';
+            this.error = '';
+
+            try {
+                const body = {
+                    text: this.text,
+                    style_instruction: this.styleInstruction,
+                    model_variant: this.mode,
+                    audio_format: 'wav',
+                    stream: false
+                };
+
+                if (this.mode === 'preset') {
+                    body.voice = this.voice;
+                } else if (this.mode === 'design') {
+                    body.voice_description = this.voiceDescription;
+                } else if (this.mode === 'clone') {
+                    body.sample_file_id = this.cloneFileId;
+                }
+
+                const resp = await fetch('/api/tts', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+
+                if (!resp.ok) {
+                    let errMsg = '合成失败';
+                    try {
+                        const err = await resp.json();
+                        errMsg = err.error || errMsg;
+                    } catch {
+                        errMsg = resp.statusText || errMsg;
+                    }
+                    throw new Error(errMsg);
+                }
+
+                const blob = await resp.blob();
+                this.audioSrc = URL.createObjectURL(blob);
+            } catch (e) {
+                this.error = e.message;
+            } finally {
+                this.loading = false;
+            }
+        }
+    };
+}
+</script>
+        </main>
+    </div>
+</body>
+</html>
+{{end}}

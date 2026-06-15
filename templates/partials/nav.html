@@ -1,0 +1,35 @@
+{{define "partials/nav.html"}}
+<aside class="w-56 bg-gray-800 border-r border-gray-700 flex flex-col shrink-0">
+    <div class="p-4 border-b border-gray-700">
+        <h1 class="text-lg font-bold text-blue-400">🤖 MiMo WebUI</h1>
+    </div>
+    <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+        <a href="/chat" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>💬</span> 对话
+        </a>
+        <a href="/image" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🖼️</span> 图片理解
+        </a>
+        <a href="/audio" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🎵</span> 音频理解
+        </a>
+        <a href="/video" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🎬</span> 视频理解
+        </a>
+        <a href="/asr" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🎤</span> 语音识别
+        </a>
+        <a href="/tts" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🔊</span> 语音合成
+        </a>
+    </nav>
+    <div class="p-3 border-t border-gray-700 text-sm text-gray-400">
+        {{if .user}}
+        <div class="flex items-center justify-between">
+            <span>👤 {{.user.Username}}</span>
+            <a href="/login" class="text-red-400 hover:text-red-300" onclick="document.cookie='token=;path=/;max-age=0'">退出</a>
+        </div>
+        {{end}}
+    </div>
+</aside>
+{{end}}

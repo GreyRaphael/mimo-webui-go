@@ -1,0 +1,575 @@
+{{define "pages/chat.html"}}
+<!DOCTYPE html>
+<html lang="zh-CN" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MiMo WebUI</title>
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
+    <script src="https://unpkg.com/htmx-ext-sse@2.2.2/sse.js"></script>
+    <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <link rel="stylesheet" href="/static/css/custom.css">
+    <script src="/static/js/app.js"></script>
+</head>
+<body class="h-full bg-gray-900 text-gray-100">
+    <div class="flex h-full">
+<aside class="w-56 bg-gray-800 border-r border-gray-700 flex flex-col shrink-0">
+    <div class="p-4 border-b border-gray-700">
+        <h1 class="text-lg font-bold text-blue-400">🤖 MiMo WebUI</h1>
+    </div>
+    <nav class="flex-1 p-3 space-y-1 overflow-y-auto">
+        <a href="/chat" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>💬</span> 对话
+        </a>
+        <a href="/image" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🖼️</span> 图片理解
+        </a>
+        <a href="/audio" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🎵</span> 音频理解
+        </a>
+        <a href="/video" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🎬</span> 视频理解
+        </a>
+        <a href="/asr" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🎤</span> 语音识别
+        </a>
+        <a href="/tts" class="nav-link flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition">
+            <span>🔊</span> 语音合成
+        </a>
+    </nav>
+    <div class="p-3 border-t border-gray-700 text-sm text-gray-400">
+        {{if .user}}
+        <div class="flex items-center justify-between">
+            <span>👤 {{.user.Username}}</span>
+            <a href="/login" class="text-red-400 hover:text-red-300" onclick="document.cookie='token=;path=/;max-age=0'">退出</a>
+        </div>
+        {{end}}
+    </div>
+</aside>
+
+        <main class="flex-1 flex flex-col overflow-hidden">
+<div class="flex h-full" x-data="chatApp()" x-init="init()">
+    <!-- Left Sidebar: Sessions -->
+    <aside class="w-64 bg-gray-850 border-r border-gray-700 flex flex-col shrink-0">
+        <div class="p-3 border-b border-gray-700">
+            <button @click="createSession()"
+                class="w-full px-3 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm font-medium transition flex items-center justify-center gap-2">
+                <span>＋</span> 新对话
+            </button>
+        </div>
+        <div class="flex-1 overflow-y-auto p-2 space-y-1" id="session-list">
+            <template x-for="s in sessions" :key="s.id">
+                <div @click="selectSession(s.id)"
+                    :class="currentSession === s.id ? 'bg-gray-700 text-white' : 'text-gray-300 hover:bg-gray-800'"
+                    class="group flex items-center justify-between px-3 py-2 rounded-lg cursor-pointer transition text-sm">
+                    <span class="truncate flex-1" x-text="s.title || '新对话'"></span>
+                    <button @click.stop="deleteSession(s.id)"
+                        class="opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition ml-2 shrink-0">
+                        ✕
+                    </button>
+                </div>
+            </template>
+            <div x-show="sessions.length === 0" class="text-gray-500 text-sm text-center py-8">
+                暂无对话
+            </div>
+        </div>
+    </aside>
+
+    <!-- Right: Chat Area -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+        <!-- Messages -->
+        <div class="flex-1 overflow-y-auto p-4 space-y-4" id="message-area" x-ref="messageArea">
+            <template x-if="!currentSession">
+                <div class="flex items-center justify-center h-full text-gray-500">
+                    <div class="text-center">
+                        <p class="text-5xl mb-4">💬</p>
+                        <p class="text-lg">选择或创建一个对话开始聊天</p>
+                    </div>
+                </div>
+            </template>
+            <template x-for="msg in messages" :key="msg.id">
+                <div :class="msg.role === 'user' ? 'flex justify-end' : 'flex justify-start'">
+                    <div :class="msg.role === 'user'
+                        ? 'bg-blue-600 text-white max-w-3xl'
+                        : 'bg-gray-700 text-gray-100 max-w-3xl'"
+                        class="rounded-2xl px-4 py-3 shadow-sm">
+                        <div class="text-xs mb-1 opacity-60" x-text="msg.role === 'user' ? '你' : 'MiMo'"></div>
+                        <!-- Media preview -->
+                        <template x-if="msg.media_preview">
+                            <div class="mb-2">
+                                <template x-if="msg.media_type === 'image'">
+                                    <img :src="msg.media_preview" class="max-h-60 rounded-lg" alt="uploaded image">
+                                </template>
+                                <template x-if="msg.media_type === 'audio'">
+                                    <audio :src="msg.media_preview" controls class="max-w-sm"></audio>
+                                </template>
+                                <template x-if="msg.media_type === 'video'">
+                                    <video :src="msg.media_preview" controls class="max-h-60 rounded-lg"></video>
+                                </template>
+                            </div>
+                        </template>
+                        <!-- Reasoning (collapsible) -->
+                        <template x-if="msg.reasoning">
+                            <details class="mb-2">
+                                <summary class="text-xs text-gray-400 cursor-pointer hover:text-gray-300 select-none">💭 推理过程</summary>
+                                <div class="mt-1 text-xs text-gray-400 border-l-2 border-gray-600 pl-3 prose prose-invert prose-sm max-w-none opacity-70" x-html="renderMarkdown(msg.reasoning)"></div>
+                            </details>
+                        </template>
+                        <!-- Content -->
+                        <div class="prose prose-invert prose-sm max-w-none message-content" x-html="renderMarkdown(msg.content || '')"></div>
+                    </div>
+                </div>
+            </template>
+            <!-- Streaming bubble — uses pre-rendered HTML from requestAnimationFrame -->
+            <div x-show="streaming" x-cloak class="flex justify-start">
+                <div class="bg-gray-700 text-gray-100 max-w-3xl rounded-2xl px-4 py-3 shadow-sm">
+                    <div class="text-xs mb-1 opacity-60">MiMo</div>
+                    <template x-if="streamReasonRendered">
+                        <details open class="mb-2">
+                            <summary class="text-xs text-gray-400 cursor-pointer select-none">💭 推理中...</summary>
+                            <div class="mt-1 text-xs text-gray-400 border-l-2 border-gray-600 pl-3 prose prose-invert prose-sm max-w-none opacity-70" x-html="streamReasonRendered"></div>
+                        </details>
+                    </template>
+                    <div class="prose prose-invert prose-sm max-w-none message-content" x-html="streamContentRendered"></div>
+                    <span class="inline-block w-2 h-4 bg-blue-400 animate-pulse ml-0.5"></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Debug Panel (temporary) -->
+        <div x-show="debugLog.length > 0" class="border-t border-gray-700 max-h-48 overflow-y-auto bg-gray-900 p-2 text-xs font-mono">
+            <details>
+                <summary class="text-yellow-400 cursor-pointer">🔍 Debug SSE Events (<span x-text="debugLog.length"></span>)</summary>
+                <template x-for="(entry, i) in debugLog" :key="i">
+                    <div class="flex gap-2 py-0.5 border-b border-gray-800">
+                        <span class="text-blue-400 w-4" x-text="entry.t"></span>
+                        <span class="text-gray-500 w-12" x-text="'L:' + entry.len"></span>
+                        <span class="text-green-500 w-12" x-text="'S:' + entry.spaces"></span>
+                        <span class="text-gray-300 break-all" x-text="entry.d"></span>
+                    </div>
+                </template>
+            </details>
+        </div>
+
+        <!-- Input Area -->
+        <div class="border-t border-gray-700 p-4" x-show="currentSession">
+            <!-- Media attachment preview -->
+            <div x-show="attachedFile" class="mb-2 flex items-center gap-2 text-sm">
+                <span class="text-gray-400">📎</span>
+                <span class="text-blue-400" x-text="attachedFileName"></span>
+                <button @click="removeAttachment()" class="text-gray-500 hover:text-red-400">✕</button>
+            </div>
+            <form @submit.prevent="sendMessage()" class="flex gap-3 items-end">
+                <!-- Attachment button -->
+                <label class="shrink-0 cursor-pointer p-2.5 text-gray-400 hover:text-blue-400 transition rounded-xl hover:bg-gray-700">
+                    <input type="file" class="hidden" accept="image/*,audio/*,video/*" @change="handleAttachment($event)">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13"></path></svg>
+                </label>
+                <div class="flex-1 relative">
+                    <textarea x-model="input" x-ref="inputField"
+                        @keydown.enter.prevent="if (!$event.shiftKey) sendMessage()"
+                        rows="1"
+                        class="w-full px-4 py-2.5 bg-gray-700 border border-gray-600 rounded-xl resize-none focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition text-gray-100 placeholder-gray-500"
+                        placeholder="输入消息... (Shift+Enter 换行)"
+                        :disabled="streaming"></textarea>
+                </div>
+                <button type="submit" :disabled="(!input.trim() && !attachedFile) || streaming"
+                    class="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-medium transition shrink-0">
+                    <span x-show="!streaming">发送</span>
+                    <span x-show="streaming">生成中...</span>
+                </button>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+// ============================================================
+// SSE stream parser — parses OpenAI-compatible SSE format.
+// Each data: line contains a complete JSON chunk.
+// Extracts delta.content and delta.reasoning_content per MiMo API docs.
+// ============================================================
+function parseSSEStream(reader, callbacks) {
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    return new Promise((resolve, reject) => {
+        function processChunk({ done, value }) {
+            if (done) {
+                if (callbacks.onDone) callbacks.onDone();
+                resolve();
+                return;
+            }
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+                if (!line.startsWith('data:')) continue;
+
+                const data = line.startsWith('data: ') ? line.slice(6) : line.slice(5);
+
+                if (data === '[DONE]') {
+                    if (callbacks.onDone) callbacks.onDone();
+                    resolve();
+                    return;
+                }
+
+                // Parse the JSON chunk per OpenAI SSE format
+                try {
+                    const chunk = JSON.parse(data);
+                    if (!chunk.choices || chunk.choices.length === 0) continue;
+                    const delta = chunk.choices[0].delta;
+                    if (!delta) continue;
+
+                    // reasoning_content and content are mutually exclusive per docs
+                    if (delta.reasoning_content && callbacks.onReasoning) {
+                        callbacks.onReasoning(delta.reasoning_content);
+                    }
+                    if (delta.content && callbacks.onMessage) {
+                        callbacks.onMessage(delta.content);
+                    }
+                } catch (e) {
+                    // Skip unparseable lines
+                }
+            }
+
+            reader.read().then(processChunk).catch(reject);
+        }
+        reader.read().then(processChunk).catch(reject);
+    });
+}
+
+// ============================================================
+// Configure marked.js once globally
+// ============================================================
+if (typeof marked !== 'undefined') {
+    marked.setOptions({ breaks: true, gfm: true, silent: true });
+}
+
+// ============================================================
+// chatApp — requestAnimationFrame streaming pattern
+// (same approach as Open WebUI / ChatGPT-Next-Web)
+// ============================================================
+function chatApp() {
+    return {
+        sessions: [],
+        currentSession: null,
+        messages: [],
+        input: '',
+        streaming: false,
+
+        // Raw text buffers (SSE deltas accumulate here)
+        streamBuffer: '',
+        streamReasoning: '',
+
+        // Pre-rendered HTML (updated via requestAnimationFrame)
+        streamContentRendered: '',
+        streamReasonRendered: '',
+
+        // rAF handle for throttling
+        _rafId: null,
+
+        // Attachment state
+        attachedFile: null,
+        attachedFileName: '',
+        attachedMediaType: '',
+        attachedFileId: '',
+
+        // Debug log (temporary)
+        debugLog: [],
+        _logEvent(type, data) {
+            const repr = JSON.stringify(data);
+            const spaces = (data.match(/ /g) || []).length;
+            this.debugLog.push({ t: type, d: repr, len: data.length, spaces });
+            if (this.debugLog.length > 200) this.debugLog.shift();
+        },
+
+        // -------------------------------------------------------
+        // Markdown rendering (used for both streaming & static)
+        // -------------------------------------------------------
+        renderMarkdown(text) {
+            if (!text) return '';
+            try {
+                // Preprocess: fix common markdown issues from LLM API output
+                text = text
+                    // ##Text → ## Text (add space after heading markers)
+                    .replace(/^(#{1,6})([^\s#])/gm, '$1 $2')
+                    // -Item at line start → - Item (add space after list markers)
+                    .replace(/^([-*+])([^\s])/gm, '$1 $2');
+                return marked.parse(text);
+            } catch (e) {
+                return text.replace(/\n/g, '<br>');
+            }
+        },
+
+        // -------------------------------------------------------
+        // requestAnimationFrame throttled streaming render
+        // -------------------------------------------------------
+        _scheduleStreamRender() {
+            if (this._rafId) return; // already scheduled
+            this._rafId = requestAnimationFrame(() => {
+                this._rafId = null;
+                this.streamContentRendered = this.renderMarkdown(this.streamBuffer);
+                this.streamReasonRendered = this.streamReasoning
+                    ? this.renderMarkdown(this.streamReasoning) : '';
+                this.scrollToBottom();
+            });
+        },
+
+        // Force immediate render (called on stream end)
+        _flushStreamRender() {
+            if (this._rafId) {
+                cancelAnimationFrame(this._rafId);
+                this._rafId = null;
+            }
+            this.streamContentRendered = this.renderMarkdown(this.streamBuffer);
+            this.streamReasonRendered = this.streamReasoning
+                ? this.renderMarkdown(this.streamReasoning) : '';
+        },
+
+        // -------------------------------------------------------
+        // Init / sessions / messages
+        // -------------------------------------------------------
+        async init() {
+            await this.loadSessions();
+            const path = window.location.pathname;
+            const match = path.match(/\/chat\/(.+)/);
+            if (match) {
+                this.currentSession = match[1];
+                await this.loadMessages(match[1]);
+            }
+        },
+
+        async loadSessions() {
+            try {
+                const resp = await fetch('/api/sessions');
+                if (resp.ok) this.sessions = await resp.json();
+            } catch (e) {
+                console.error('Failed to load sessions:', e);
+            }
+        },
+
+        async createSession() {
+            try {
+                const resp = await fetch('/api/sessions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: '新对话', model: 'mimo-v2.5' })
+                });
+                if (resp.ok) {
+                    const session = await resp.json();
+                    this.sessions.unshift(session);
+                    this.selectSession(session.id);
+                }
+            } catch (e) {
+                console.error('Failed to create session:', e);
+            }
+        },
+
+        async selectSession(id) {
+            this.currentSession = id;
+            this.messages = [];
+            this.streamBuffer = '';
+            this.streamReasoning = '';
+            this.streamContentRendered = '';
+            this.streamReasonRendered = '';
+            history.pushState(null, '', '/chat/' + id);
+            await this.loadMessages(id);
+        },
+
+        async loadMessages(sessionId) {
+            try {
+                const resp = await fetch('/api/sessions/' + sessionId + '/messages');
+                if (resp.ok) {
+                    this.messages = Array.isArray(await resp.json()) ? await resp.json() : [];
+                    this.$nextTick(() => this.scrollToBottom());
+                }
+            } catch (e) {
+                console.error('Failed to load messages:', e);
+            }
+        },
+
+        async deleteSession(id) {
+            try {
+                const resp = await fetch('/api/sessions/' + id, { method: 'DELETE' });
+                if (resp.ok || resp.status === 204) {
+                    this.sessions = this.sessions.filter(s => s.id !== id);
+                    if (this.currentSession === id) {
+                        this.currentSession = null;
+                        this.messages = [];
+                        history.pushState(null, '', '/chat');
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to delete session:', e);
+            }
+        },
+
+        // -------------------------------------------------------
+        // Attachments
+        // -------------------------------------------------------
+        handleAttachment(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            this.attachedFile = file;
+            this.attachedFileName = file.name;
+            if (file.type.startsWith('image/')) this.attachedMediaType = 'image';
+            else if (file.type.startsWith('audio/')) this.attachedMediaType = 'audio';
+            else if (file.type.startsWith('video/')) this.attachedMediaType = 'video';
+            else this.attachedMediaType = '';
+        },
+
+        removeAttachment() {
+            this.attachedFile = null;
+            this.attachedFileName = '';
+            this.attachedMediaType = '';
+            this.attachedFileId = '';
+        },
+
+        // -------------------------------------------------------
+        // Send message + stream response
+        // -------------------------------------------------------
+        async sendMessage() {
+            const content = this.input.trim();
+            if (!content && !this.attachedFile) return;
+            if (this.streaming) return;
+
+            this.input = '';
+            this.streaming = true;
+            this.streamBuffer = '';
+            this.streamReasoning = '';
+            this.streamContentRendered = '';
+            this.streamReasonRendered = '';
+            this.debugLog = [];
+
+            let mediaUrl = null;
+            let mediaType = null;
+
+            // Upload attachment
+            if (this.attachedFile) {
+                try {
+                    const form = new FormData();
+                    form.append('file', this.attachedFile);
+                    const uploadResp = await fetch('/api/upload', { method: 'POST', body: form });
+                    if (uploadResp.ok) {
+                        const data = await uploadResp.json();
+                        mediaUrl = data.temp_path;
+                        mediaType = this.attachedMediaType;
+                        this.attachedFileId = data.file_id;
+                    }
+                } catch (e) {
+                    console.error('Upload failed:', e);
+                }
+                this.removeAttachment();
+            }
+
+            // Add user message to UI
+            this.messages.push({
+                id: 'user-' + Date.now(),
+                role: 'user',
+                content: content,
+                media_url: null,
+                media_type: mediaType,
+                media_preview: this.attachedFileId ? '/api/media/' + this.attachedFileId : null,
+                reasoning: null
+            });
+            this.attachedFileId = '';
+            this.$nextTick(() => this.scrollToBottom());
+
+            try {
+                const body = { content: content, stream: true };
+                if (mediaUrl) {
+                    body.media_url = mediaUrl;
+                    body.media_type = mediaType;
+                }
+
+                const resp = await fetch('/api/sessions/' + this.currentSession + '/messages', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+
+                if (!resp.ok) {
+                    const err = await resp.json().catch(() => ({ error: 'Unknown error' }));
+                    throw new Error(err.error || 'Failed to send message');
+                }
+
+                // Parse SSE stream with rAF-throttled markdown rendering
+                const reader = resp.body.getReader();
+                await parseSSEStream(reader, {
+                    onReasoning: (data) => {
+                        this._logEvent('R', data);
+                        this.streamReasoning += data;
+                        this._scheduleStreamRender();
+                    },
+                    onMessage: (data) => {
+                        this._logEvent('M', data);
+                        this.streamBuffer += data;
+                        this._scheduleStreamRender();
+                    },
+                    onDone: () => {}
+                });
+
+                // Finalize: flush last render, then move to messages array
+                if (this.streamBuffer || this.streamReasoning) {
+                    this._flushStreamRender();
+
+                    const finalContent = this.streamBuffer;
+                    const finalReasoning = this.streamReasoning || null;
+
+                    this.streamBuffer = '';
+                    this.streamReasoning = '';
+                    this.streamContentRendered = '';
+                    this.streamReasonRendered = '';
+                    this.streaming = false;
+
+                    await this.$nextTick();
+                    this.messages.push({
+                        id: 'msg-' + Date.now(),
+                        role: 'assistant',
+                        content: finalContent,
+                        reasoning: finalReasoning,
+                        media_url: null,
+                        media_type: null
+                    });
+                    this.$nextTick(() => this.scrollToBottom());
+                }
+            } catch (e) {
+                console.error('Send error:', e);
+                this.streamBuffer = '';
+                this.streamReasoning = '';
+                this.streamContentRendered = '';
+                this.streamReasonRendered = '';
+                this.messages.push({
+                    id: 'error-' + Date.now(),
+                    role: 'assistant',
+                    content: '❌ 发送失败: ' + e.message,
+                    media_url: null,
+                    media_type: null,
+                    reasoning: null
+                });
+            } finally {
+                this.streaming = false;
+                if (this._rafId) {
+                    cancelAnimationFrame(this._rafId);
+                    this._rafId = null;
+                }
+                this.$nextTick(() => this.scrollToBottom());
+            }
+        },
+
+        scrollToBottom() {
+            const el = this.$refs.messageArea;
+            if (el) el.scrollTop = el.scrollHeight;
+        }
+    };
+}
+</script>
+        </main>
+    </div>
+</body>
+</html>
+{{end}}
