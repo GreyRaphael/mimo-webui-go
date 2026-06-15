@@ -1,6 +1,22 @@
 // MiMo WebUI - Main Application JavaScript
 
-// Highlight active nav link based on current path
+// ============================================================
+// Mobile nav drawer state
+// ============================================================
+function mobileNavApp() {
+    return {
+        navOpen: false,
+        sessionDrawerOpen: false,
+        toggleNav() { this.navOpen = !this.navOpen; },
+        closeNav() { this.navOpen = false; },
+        toggleSessionDrawer() { this.sessionDrawerOpen = !this.sessionDrawerOpen; },
+        closeSessionDrawer() { this.sessionDrawerOpen = false; }
+    };
+}
+
+// ============================================================
+// Highlight active nav link
+// ============================================================
 document.addEventListener('DOMContentLoaded', function() {
     const path = window.location.pathname;
     document.querySelectorAll('.nav-link').forEach(function(link) {

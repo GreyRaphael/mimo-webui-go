@@ -13,9 +13,14 @@
     <link rel="stylesheet" href="/static/css/custom.css">
     <script src="/static/js/app.js"></script>
 </head>
-<body class="h-full bg-gray-900 text-gray-100">
+<body class="h-full bg-gray-900 text-gray-100" x-data="mobileNavApp()">
+
+<!-- Mobile: Nav overlay -->
+<div x-show="navOpen" @click="closeNav()" class="md:hidden fixed inset-0 bg-black/50 z-40" style="display:none"></div>
+
     <div class="flex h-full">
-<aside class="w-56 bg-gray-800 border-r border-gray-700 flex flex-col shrink-0">
+<!-- Nav sidebar: desktop = fixed visible, mobile = slide-out drawer -->
+<aside class="nav-sidebar w-56 bg-gray-800 border-r border-gray-700 flex flex-col shrink-0" :class="navOpen ? 'open' : ''">
     <div class="p-4 border-b border-gray-700">
         <h1 class="text-lg font-bold text-blue-400">🤖 MiMo WebUI</h1>
     </div>
@@ -50,7 +55,14 @@
 </aside>
 
         <main class="flex-1 flex flex-col overflow-hidden">
-<div class="flex flex-col h-full overflow-y-auto p-6" x-data="asrApp()">
+<!-- Mobile: top bar with hamburger -->
+<div class="md:hidden flex items-center px-3 py-2 bg-gray-800 border-b border-gray-700 shrink-0">
+    <button @click="toggleNav()" class="p-2 text-gray-400 hover:text-white rounded-lg">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"></path></svg>
+    </button>
+    <span class="text-sm font-medium text-blue-400 ml-2">🎤 语音识别</span>
+</div>
+<div class="flex flex-col h-full overflow-y-auto p-4 sm:p-6" x-data="asrApp()">
     <div class="max-w-4xl mx-auto w-full space-y-6">
         <h2 class="text-2xl font-bold text-blue-400 flex items-center gap-2">
             🎤 语音识别 (ASR)
