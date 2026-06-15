@@ -34,7 +34,7 @@ func ListSessions(ctx context.Context, db *DB, userID int64) ([]Session, error) 
 	}
 	defer rows.Close()
 
-	var sessions []Session
+	sessions := make([]Session, 0)
 	for rows.Next() {
 		var s Session
 		if err := rows.Scan(&s.ID, &s.UserID, &s.Title, &s.Model, &s.CreatedAt); err != nil {

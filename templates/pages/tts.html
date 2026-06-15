@@ -150,11 +150,17 @@
         </div>
 
         <!-- Submit -->
-        <button @click="submit()" :disabled="loading || !text || (mode === 'design' && !voiceDescription) || (mode === 'clone' && !cloneFileId)"
-            class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition">
-            <span x-show="!loading">合成语音</span>
-            <span x-show="loading">合成中...</span>
-        </button>
+        <div class="flex gap-2">
+            <button @click="submit()" :disabled="loading || !text || (mode === 'design' && !voiceDescription) || (mode === 'clone' && !cloneFileId)"
+                class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition">
+                <span x-show="!loading">合成语音</span>
+                <span x-show="loading">合成中...</span>
+            </button>
+            <button @click="clearAll()" x-show="text || audioSrc || error || cloneFileId"
+                class="px-4 py-2.5 bg-gray-600 hover:bg-gray-500 rounded-lg text-sm transition text-gray-300">
+                清空
+            </button>
+        </div>
 
         <!-- Audio Output -->
         <div x-show="audioSrc" class="bg-gray-800 rounded-xl p-6 border border-gray-700">
@@ -162,7 +168,7 @@
             <audio :src="audioSrc" controls class="w-full"></audio>
         </div>
 
-        <!-- Error -->
+                <!-- Error -->
         <div x-show="error" class="p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-300 text-sm" x-text="error"></div>
     </div>
 </div>
@@ -183,6 +189,35 @@ function ttsApp() {
         loading: false,
         uploading: false,
         dragging: false,
+
+        async init() {
+            const saved = sessionStorage.getItem('tts_state');
+            if (saved) {
+                try {
+                    const d = JSON.parse(saved);
+                    if (d.mode) this.mode = d.mode;
+                    if (d.voice) this.voice = d.voice;
+                    if (d.text) this.text = d.text;
+                    if (d.voiceDescription) this.voiceDescription = d.voiceDescription;
+                    if (d.styleInstruction) this.styleInstruction = d.styleInstruction;
+                    if (d.cloneFileId) this.cloneFileId = d.cloneFileId;
+                    if (d.cloneFileName) this.cloneFileName = d.cloneFileName;
+                    // Restore clone preview
+                    const cloneFile = await loadFileFromDB('tts_clone_file');
+                    if (cloneFile) this.clonePreviewUrl = URL.createObjectURL(cloneFile);
+                    // Restore output audio
+                    const outputBlob = await loadFileFromDB('tts_output_audio');
+                    if (outputBlob) this.audioSrc = URL.createObjectURL(outputBlob);
+                } catch(e) {}
+            }
+        },
+        _saveState() {
+            sessionStorage.setItem('tts_state', JSON.stringify({
+                mode: this.mode, voice: this.voice, text: this.text,
+                voiceDescription: this.voiceDescription, styleInstruction: this.styleInstruction,
+                cloneFileId: this.cloneFileId, cloneFileName: this.cloneFileName
+            }));
+        },
 
         handleFile(e) {
             const file = e.target.files[0];
@@ -211,6 +246,7 @@ function ttsApp() {
                 const data = await resp.json();
                 this.cloneFileId = data.file_id;
                 this.clonePreviewUrl = URL.createObjectURL(file);
+                saveFileToDB('tts_clone_file', file);
             } catch (e) {
                 this.error = '上传失败: ' + e.message;
             } finally {
@@ -226,6 +262,8 @@ function ttsApp() {
             this.loading = true;
             this.audioSrc = '';
             this.error = '';
+            sessionStorage.removeItem('tts_state');
+            removeFileFromDB('tts_output_audio');
 
             try {
                 const body = {
@@ -263,11 +301,21 @@ function ttsApp() {
 
                 const blob = await resp.blob();
                 this.audioSrc = URL.createObjectURL(blob);
+                saveFileToDB('tts_output_audio', blob);
+                this._saveState();
             } catch (e) {
                 this.error = e.message;
             } finally {
                 this.loading = false;
             }
+        },
+
+        clearAll() {
+            this.text = ''; this.audioSrc = ''; this.error = ''; this.cloneFileId = ''; this.cloneFileName = ''; this.clonePreviewUrl = ''; this.voiceDescription = ''; this.styleInstruction = '';
+            sessionStorage.removeItem('tts_state');
+            removeFileFromDB('tts_clone_file');
+            removeFileFromDB('tts_output_audio');
+            if (this.$refs.cloneFileInput) this.$refs.cloneFileInput.value = '';
         }
     };
 }

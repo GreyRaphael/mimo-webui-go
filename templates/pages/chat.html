@@ -141,21 +141,6 @@
             </div>
         </div>
 
-        <!-- Debug Panel (temporary) -->
-        <div x-show="debugLog.length > 0" class="border-t border-gray-700 max-h-48 overflow-y-auto bg-gray-900 p-2 text-xs font-mono">
-            <details>
-                <summary class="text-yellow-400 cursor-pointer">🔍 Debug SSE Events (<span x-text="debugLog.length"></span>)</summary>
-                <template x-for="(entry, i) in debugLog" :key="i">
-                    <div class="flex gap-2 py-0.5 border-b border-gray-800">
-                        <span class="text-blue-400 w-4" x-text="entry.t"></span>
-                        <span class="text-gray-500 w-12" x-text="'L:' + entry.len"></span>
-                        <span class="text-green-500 w-12" x-text="'S:' + entry.spaces"></span>
-                        <span class="text-gray-300 break-all" x-text="entry.d"></span>
-                    </div>
-                </template>
-            </details>
-        </div>
-
         <!-- Input Area -->
         <div class="border-t border-gray-700 p-4" x-show="currentSession">
             <!-- Media attachment preview -->
@@ -272,16 +257,7 @@ function chatApp() {
         attachedMediaType: '',
         attachedFileId: '',
 
-        // Debug log (temporary)
-        debugLog: [],
-        _logEvent(type, data) {
-            const repr = JSON.stringify(data);
-            const spaces = (data.match(/ /g) || []).length;
-            this.debugLog.push({ t: type, d: repr, len: data.length, spaces });
-            if (this.debugLog.length > 200) this.debugLog.shift();
-        },
-
-        // Accessor for current session's inflight state
+        // -------------------------------------------------------
         get _current() {
             return this._inflight[this.currentSession] || null;
         },
@@ -341,27 +317,35 @@ function chatApp() {
             // Determine which session to view: URL param > sessionStorage > none
             const path = window.location.pathname;
             const urlMatch = path.match(/\/chat\/(.+)/);
-            const savedSession = sessionStorage.getItem('chat_current_session');
+            let savedSession = sessionStorage.getItem('chat_current_session');
+            // Clean up invalid saved values
+            if (!savedSession || savedSession === 'undefined' || savedSession === 'null') {
+                sessionStorage.removeItem('chat_current_session');
+                savedSession = null;
+            }
 
             const targetSession = urlMatch?.[1] || savedSession;
 
-            if (targetSession) {
-                // Verify the session still exists in the loaded list
-                const exists = this.sessions.some(s => s.id === targetSession);
-                if (exists) {
-                    this.currentSession = targetSession;
-                    if (!urlMatch?.[1]) {
-                        history.replaceState(null, '', '/chat/' + targetSession);
-                    }
-                    await this.loadMessages(targetSession);
+            if (targetSession && this.sessions.some(s => s.id === targetSession)) {
+                this.currentSession = targetSession;
+                if (!urlMatch?.[1]) {
+                    history.replaceState(null, '', '/chat/' + targetSession);
                 }
+                await this.loadMessages(targetSession);
+            } else {
+                // No valid session — clear stale sessionStorage, stay on /chat
+                sessionStorage.removeItem('chat_current_session');
+                if (urlMatch?.[1]) history.replaceState(null, '', '/chat');
             }
         },
 
         async loadSessions() {
             try {
                 const resp = await fetch('/api/sessions');
-                if (resp.ok) this.sessions = await resp.json();
+                if (resp.ok) {
+                    const data = await resp.json();
+                    this.sessions = Array.isArray(data) ? data : [];
+                }
             } catch (e) {
                 console.error('Failed to load sessions:', e);
             }
@@ -376,8 +360,14 @@ function chatApp() {
                 });
                 if (resp.ok) {
                     const session = await resp.json();
+                    if (!session || !session.id) {
+                        console.error('createSession: invalid response', session);
+                        return;
+                    }
                     this.sessions.unshift(session);
                     this.selectSession(session.id);
+                } else {
+                    console.error('createSession failed:', resp.status);
                 }
             } catch (e) {
                 console.error('Failed to create session:', e);
@@ -385,6 +375,7 @@ function chatApp() {
         },
 
         async selectSession(id) {
+            if (!id) return; // guard against undefined
             this.currentSession = id;
             this.messages = [];
             sessionStorage.setItem('chat_current_session', id);
@@ -547,14 +538,12 @@ function chatApp() {
                 const reader = resp.body.getReader();
                 await parseSSEStream(reader, {
                     onReasoning: (data) => {
-                        this._logEvent('R', data);
                         const inf = this._inflight[sid];
                         if (!inf) return;
                         inf.reasoning += data;
                         if (this.currentSession === sid) this._scheduleStreamRender();
                     },
                     onMessage: (data) => {
-                        this._logEvent('M', data);
                         const inf = this._inflight[sid];
                         if (!inf) return;
                         inf.buffer += data;

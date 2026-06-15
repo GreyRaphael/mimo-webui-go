@@ -136,11 +136,17 @@
         </div>
 
         <!-- Submit -->
-        <button @click="submit()" :disabled="loading || (!fileId && !videoUrl)"
-            class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition">
-            <span x-show="!loading">开始分析</span>
-            <span x-show="loading">分析中...</span>
-        </button>
+        <div class="flex gap-2">
+            <button @click="submit()" :disabled="loading || (!fileId && !videoUrl)"
+                class="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg font-medium transition">
+                <span x-show="!loading">开始分析</span>
+                <span x-show="loading">分析中...</span>
+            </button>
+            <button @click="clearAll()" x-show="result || reasoning || error || fileId || previewUrl"
+                class="px-4 py-2.5 bg-gray-600 hover:bg-gray-500 rounded-lg text-sm transition text-gray-300">
+                清空
+            </button>
+        </div>
 
         <!-- Reasoning -->
         <div x-show="reasoning" class="bg-gray-800/50 rounded-xl p-4 border border-gray-700/50">
@@ -156,7 +162,7 @@
             <div class="prose prose-invert prose-sm max-w-none" x-html="renderMarkdown(result)"></div>
         </div>
 
-        <!-- Error -->
+                <!-- Error -->
         <div x-show="error" class="p-3 bg-red-900/50 border border-red-700 rounded-lg text-red-300 text-sm" x-text="error"></div>
     </div>
 </div>
@@ -206,23 +212,27 @@ function videoApp() {
 
         // Restore state from sessionStorage (survives page navigation)
 
-        init() {
+        async init() {
             const saved = sessionStorage.getItem('video_analysis');
             if (saved) {
                 try {
                     const d = JSON.parse(saved);
                     if (d.result) this.result = d.result;
                     if (d.reasoning) this.reasoning = d.reasoning;
-                    if (d.previewUrl) this.previewUrl = d.previewUrl;
                     if (d.fileName) this.fileName = d.fileName;
                     if (d.prompt) this.prompt = d.prompt;
                     if (d.fps) this.fps = d.fps;
                     if (d.mediaResolution) this.mediaResolution = d.mediaResolution;
+                    const file = await loadFileFromDB('video_file');
+                    if (file) {
+                        this.previewUrl = URL.createObjectURL(file);
+                        this.fileId = d.fileId || '';
+                    }
                 } catch(e) {}
             }
         },
         _saveState() {
-            sessionStorage.setItem('video_analysis', JSON.stringify({result: this.result, reasoning: this.reasoning, previewUrl: this.previewUrl, fileName: this.fileName, prompt: this.prompt, fps: this.fps, mediaResolution: this.mediaResolution}));
+            sessionStorage.setItem('video_analysis', JSON.stringify({result: this.result, reasoning: this.reasoning, fileName: this.fileName, prompt: this.prompt, fileId: this.fileId, fps: this.fps, mediaResolution: this.mediaResolution}));
         },
         fps: 2.0,
         mediaResolution: 'default',
@@ -254,6 +264,7 @@ function videoApp() {
                 const data = await resp.json();
                 this.fileId = data.file_id;
                 this.previewUrl = URL.createObjectURL(file);
+                saveFileToDB('video_file', file);
             } catch (e) {
                 this.error = '上传失败: ' + e.message;
             } finally {
@@ -265,6 +276,7 @@ function videoApp() {
             this.fileId = '';
             this.fileName = '';
             this.previewUrl = '';
+            removeFileFromDB('video_file');
         },
 
         clearUrl() {
@@ -330,6 +342,13 @@ function videoApp() {
                 } catch(e) { return text.replace(/\n/g, '<br>'); }
             }
             return text.replace(/\n/g, '<br>');
+        },
+
+        clearAll() {
+            this.result = ''; this.reasoning = ''; this.error = ''; this.fileId = ''; this.fileName = ''; this.previewUrl = ''; this.videoUrl = '';
+            sessionStorage.removeItem('video_analysis');
+            removeFileFromDB('video_file');
+            if (this.$refs.fileInput) this.$refs.fileInput.value = '';
         }
     };
 }

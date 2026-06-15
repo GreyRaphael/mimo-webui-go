@@ -38,7 +38,7 @@ func ListMessages(ctx context.Context, db *DB, sessionID string, limit int) ([]M
 	}
 	defer rows.Close()
 
-	var msgs []Message
+	msgs := make([]Message, 0)
 	for rows.Next() {
 		var m Message
 		if err := rows.Scan(&m.ID, &m.SessionID, &m.Role, &m.Content, &m.MediaType, &m.MediaURL, &m.Reasoning, &m.CreatedAt); err != nil {
