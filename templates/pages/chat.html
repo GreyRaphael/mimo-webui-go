@@ -100,13 +100,16 @@
                         <template x-if="msg.media_preview">
                             <div class="mb-2">
                                 <template x-if="msg.media_type === 'image'">
-                                    <img :src="msg.media_preview" class="max-h-60 rounded-lg" alt="uploaded image">
+                                    <img :src="msg.media_preview" class="max-h-60 rounded-lg" alt="uploaded image"
+                                        @error="$el.style.display='none'">
                                 </template>
                                 <template x-if="msg.media_type === 'audio'">
-                                    <audio :src="msg.media_preview" controls class="max-w-sm"></audio>
+                                    <audio :src="msg.media_preview" controls class="w-full min-w-[280px] max-w-md"
+                                        @error="$el.style.display='none'"></audio>
                                 </template>
                                 <template x-if="msg.media_type === 'video'">
-                                    <video :src="msg.media_preview" controls class="max-h-60 rounded-lg"></video>
+                                    <video :src="msg.media_preview" controls class="max-h-60 rounded-lg"
+                                        @error="$el.style.display='none'"></video>
                                 </template>
                             </div>
                         </template>
@@ -126,13 +129,13 @@
             <div x-show="streaming" x-cloak class="flex justify-start">
                 <div class="bg-gray-700 text-gray-100 max-w-3xl rounded-2xl px-4 py-3 shadow-sm">
                     <div class="text-xs mb-1 opacity-60">MiMo</div>
-                    <template x-if="streamReasonRendered">
+                    <template x-if="_current?.reasonRendered">
                         <details open class="mb-2">
                             <summary class="text-xs text-gray-400 cursor-pointer select-none">💭 推理中...</summary>
-                            <div class="mt-1 text-xs text-gray-400 border-l-2 border-gray-600 pl-3 prose prose-invert prose-sm max-w-none opacity-70" x-html="streamReasonRendered"></div>
+                            <div class="mt-1 text-xs text-gray-400 border-l-2 border-gray-600 pl-3 prose prose-invert prose-sm max-w-none opacity-70" x-html="_current.reasonRendered"></div>
                         </details>
                     </template>
-                    <div class="prose prose-invert prose-sm max-w-none message-content" x-html="streamContentRendered"></div>
+                    <div class="prose prose-invert prose-sm max-w-none message-content" x-html="_current?.contentRendered || ''"></div>
                     <span class="inline-block w-2 h-4 bg-blue-400 animate-pulse ml-0.5"></span>
                 </div>
             </div>
@@ -250,8 +253,8 @@ if (typeof marked !== 'undefined') {
 }
 
 // ============================================================
-// chatApp — requestAnimationFrame streaming pattern
-// (same approach as Open WebUI / ChatGPT-Next-Web)
+// chatApp — INFLIGHT pattern (per-session streaming state)
+// Borrowed from nesquena/hermes-webui: always accumulate, conditionally render
 // ============================================================
 function chatApp() {
     return {
@@ -259,18 +262,9 @@ function chatApp() {
         currentSession: null,
         messages: [],
         input: '',
-        streaming: false,
 
-        // Raw text buffers (SSE deltas accumulate here)
-        streamBuffer: '',
-        streamReasoning: '',
-
-        // Pre-rendered HTML (updated via requestAnimationFrame)
-        streamContentRendered: '',
-        streamReasonRendered: '',
-
-        // rAF handle for throttling
-        _rafId: null,
+        // Per-session streaming state: _inflight[sessionId] = { buffer, reasoning, contentRendered, reasonRendered, active, controller, rafId }
+        _inflight: {},
 
         // Attachment state
         attachedFile: null,
@@ -287,17 +281,24 @@ function chatApp() {
             if (this.debugLog.length > 200) this.debugLog.shift();
         },
 
+        // Accessor for current session's inflight state
+        get _current() {
+            return this._inflight[this.currentSession] || null;
+        },
+
+        // Computed: is the current session streaming?
+        get streaming() {
+            return this._current?.active || false;
+        },
+
         // -------------------------------------------------------
         // Markdown rendering (used for both streaming & static)
         // -------------------------------------------------------
         renderMarkdown(text) {
             if (!text) return '';
             try {
-                // Preprocess: fix common markdown issues from LLM API output
                 text = text
-                    // ##Text → ## Text (add space after heading markers)
                     .replace(/^(#{1,6})([^\s#])/gm, '$1 $2')
-                    // -Item at line start → - Item (add space after list markers)
                     .replace(/^([-*+])([^\s])/gm, '$1 $2');
                 return marked.parse(text);
             } catch (e) {
@@ -307,38 +308,38 @@ function chatApp() {
 
         // -------------------------------------------------------
         // requestAnimationFrame throttled streaming render
+        // Always renders the current session's inflight state
         // -------------------------------------------------------
         _scheduleStreamRender() {
-            if (this._rafId) return; // already scheduled
-            this._rafId = requestAnimationFrame(() => {
-                this._rafId = null;
-                this.streamContentRendered = this.renderMarkdown(this.streamBuffer);
-                this.streamReasonRendered = this.streamReasoning
-                    ? this.renderMarkdown(this.streamReasoning) : '';
+            const cur = this._current;
+            if (!cur || cur.rafId) return;
+            cur.rafId = requestAnimationFrame(() => {
+                cur.rafId = null;
+                cur.contentRendered = this.renderMarkdown(cur.buffer);
+                cur.reasonRendered = cur.reasoning
+                    ? this.renderMarkdown(cur.reasoning) : null;
                 this.scrollToBottom();
             });
         },
 
-        // Force immediate render (called on stream end)
-        _flushStreamRender() {
-            if (this._rafId) {
-                cancelAnimationFrame(this._rafId);
-                this._rafId = null;
-            }
-            this.streamContentRendered = this.renderMarkdown(this.streamBuffer);
-            this.streamReasonRendered = this.streamReasoning
-                ? this.renderMarkdown(this.streamReasoning) : '';
+        _flushStreamRender(sid) {
+            const inf = this._inflight[sid];
+            if (!inf) return;
+            if (inf.rafId) { cancelAnimationFrame(inf.rafId); inf.rafId = null; }
+            inf.contentRendered = this.renderMarkdown(inf.buffer);
+            inf.reasonRendered = inf.reasoning
+                ? this.renderMarkdown(inf.reasoning) : null;
         },
 
         // -------------------------------------------------------
         // Init / sessions / messages
         // -------------------------------------------------------
         async init() {
-            await this.loadSessions();
             const path = window.location.pathname;
             const match = path.match(/\/chat\/(.+)/);
             if (match) {
                 this.currentSession = match[1];
+                await this.loadSessions();
                 await this.loadMessages(match[1]);
             }
         },
@@ -372,10 +373,6 @@ function chatApp() {
         async selectSession(id) {
             this.currentSession = id;
             this.messages = [];
-            this.streamBuffer = '';
-            this.streamReasoning = '';
-            this.streamContentRendered = '';
-            this.streamReasonRendered = '';
             history.pushState(null, '', '/chat/' + id);
             await this.loadMessages(id);
         },
@@ -384,7 +381,27 @@ function chatApp() {
             try {
                 const resp = await fetch('/api/sessions/' + sessionId + '/messages');
                 if (resp.ok) {
-                    this.messages = Array.isArray(await resp.json()) ? await resp.json() : [];
+                    const msgs = await resp.json();
+                    if (Array.isArray(msgs)) {
+                        this.messages = msgs.map(m => ({
+                            ...m,
+                            media_preview: m.media_url || null
+                        }));
+                    } else {
+                        this.messages = [];
+                    }
+                    // If this session has an inflight stream, append the live assistant message
+                    const inf = this._inflight[sessionId];
+                    if (inf && inf.active && inf.buffer) {
+                        this.messages.push({
+                            id: 'live-' + sessionId,
+                            role: 'assistant',
+                            content: inf.buffer,
+                            reasoning: inf.reasoning || null,
+                            media_url: null,
+                            media_type: null
+                        });
+                    }
                     this.$nextTick(() => this.scrollToBottom());
                 }
             } catch (e) {
@@ -396,6 +413,11 @@ function chatApp() {
             try {
                 const resp = await fetch('/api/sessions/' + id, { method: 'DELETE' });
                 if (resp.ok || resp.status === 204) {
+                    // Cancel any active stream for this session
+                    const inf = this._inflight[id];
+                    if (inf?.controller) inf.controller.abort();
+                    delete this._inflight[id];
+
                     this.sessions = this.sessions.filter(s => s.id !== id);
                     if (this.currentSession === id) {
                         this.currentSession = null;
@@ -430,23 +452,28 @@ function chatApp() {
         },
 
         // -------------------------------------------------------
-        // Send message + stream response
+        // Send message + stream response (INFLIGHT pattern)
         // -------------------------------------------------------
         async sendMessage() {
             const content = this.input.trim();
             if (!content && !this.attachedFile) return;
-            if (this.streaming) return;
+            const sid = this.currentSession;
+            if (!sid) return;
+            // Guard: block only if THIS session is already streaming
+            if (this._inflight[sid]?.active) return;
 
             this.input = '';
-            this.streaming = true;
-            this.streamBuffer = '';
-            this.streamReasoning = '';
-            this.streamContentRendered = '';
-            this.streamReasonRendered = '';
-            this.debugLog = [];
+
+            // Initialize inflight state for this session
+            this._inflight[sid] = {
+                buffer: '', reasoning: '', contentRendered: '', reasonRendered: null,
+                active: true, controller: null, rafId: null
+            };
 
             let mediaUrl = null;
             let mediaType = null;
+            let mediaFileId = null;
+            let mediaPreviewUrl = null;
 
             // Upload attachment
             if (this.attachedFile) {
@@ -458,7 +485,8 @@ function chatApp() {
                         const data = await uploadResp.json();
                         mediaUrl = data.temp_path;
                         mediaType = this.attachedMediaType;
-                        this.attachedFileId = data.file_id;
+                        mediaFileId = data.file_id;
+                        mediaPreviewUrl = '/api/media/' + data.file_id;
                     }
                 } catch (e) {
                     console.error('Upload failed:', e);
@@ -473,23 +501,26 @@ function chatApp() {
                 content: content,
                 media_url: null,
                 media_type: mediaType,
-                media_preview: this.attachedFileId ? '/api/media/' + this.attachedFileId : null,
+                media_preview: mediaPreviewUrl,
                 reasoning: null
             });
-            this.attachedFileId = '';
             this.$nextTick(() => this.scrollToBottom());
 
             try {
                 const body = { content: content, stream: true };
                 if (mediaUrl) {
-                    body.media_url = mediaUrl;
+                    body.media_url = mediaFileId;
                     body.media_type = mediaType;
                 }
 
-                const resp = await fetch('/api/sessions/' + this.currentSession + '/messages', {
+                const controller = new AbortController();
+                this._inflight[sid].controller = controller;
+
+                const resp = await fetch('/api/sessions/' + sid + '/messages', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(body)
+                    body: JSON.stringify(body),
+                    signal: controller.signal
                 });
 
                 if (!resp.ok) {
@@ -497,65 +528,72 @@ function chatApp() {
                     throw new Error(err.error || 'Failed to send message');
                 }
 
-                // Parse SSE stream with rAF-throttled markdown rendering
                 const reader = resp.body.getReader();
                 await parseSSEStream(reader, {
                     onReasoning: (data) => {
                         this._logEvent('R', data);
-                        this.streamReasoning += data;
-                        this._scheduleStreamRender();
+                        const inf = this._inflight[sid];
+                        if (!inf) return;
+                        inf.reasoning += data;
+                        if (this.currentSession === sid) this._scheduleStreamRender();
                     },
                     onMessage: (data) => {
                         this._logEvent('M', data);
-                        this.streamBuffer += data;
-                        this._scheduleStreamRender();
+                        const inf = this._inflight[sid];
+                        if (!inf) return;
+                        inf.buffer += data;
+                        if (this.currentSession === sid) this._scheduleStreamRender();
                     },
                     onDone: () => {}
                 });
 
-                // Finalize: flush last render, then move to messages array
-                if (this.streamBuffer || this.streamReasoning) {
-                    this._flushStreamRender();
+                // Finalize
+                const inf = this._inflight[sid];
+                if (inf && (inf.buffer || inf.reasoning)) {
+                    this._flushStreamRender(sid);
+                    const finalContent = inf.buffer;
+                    const finalReasoning = inf.reasoning || null;
 
-                    const finalContent = this.streamBuffer;
-                    const finalReasoning = this.streamReasoning || null;
+                    delete this._inflight[sid];
 
-                    this.streamBuffer = '';
-                    this.streamReasoning = '';
-                    this.streamContentRendered = '';
-                    this.streamReasonRendered = '';
-                    this.streaming = false;
-
-                    await this.$nextTick();
-                    this.messages.push({
-                        id: 'msg-' + Date.now(),
-                        role: 'assistant',
-                        content: finalContent,
-                        reasoning: finalReasoning,
-                        media_url: null,
-                        media_type: null
-                    });
-                    this.$nextTick(() => this.scrollToBottom());
+                    // Only push to UI if still viewing this session
+                    if (this.currentSession === sid) {
+                        await this.$nextTick();
+                        this.messages.push({
+                            id: 'msg-' + Date.now(),
+                            role: 'assistant',
+                            content: finalContent,
+                            reasoning: finalReasoning,
+                            media_url: null,
+                            media_type: null
+                        });
+                        this.$nextTick(() => this.scrollToBottom());
+                        this._maybeGenerateTitle();
+                    }
+                    // If switched away: message already saved to DB by backend,
+                    // will appear when user switches back (loadMessages from DB)
                 }
             } catch (e) {
+                if (e.name === 'AbortError') return;
                 console.error('Send error:', e);
-                this.streamBuffer = '';
-                this.streamReasoning = '';
-                this.streamContentRendered = '';
-                this.streamReasonRendered = '';
-                this.messages.push({
-                    id: 'error-' + Date.now(),
-                    role: 'assistant',
-                    content: '❌ 发送失败: ' + e.message,
-                    media_url: null,
-                    media_type: null,
-                    reasoning: null
-                });
+                delete this._inflight[sid];
+                // Only show error if still viewing this session
+                if (this.currentSession === sid) {
+                    this.messages.push({
+                        id: 'error-' + Date.now(),
+                        role: 'assistant',
+                        content: '❌ 发送失败: ' + e.message,
+                        media_url: null,
+                        media_type: null,
+                        reasoning: null
+                    });
+                }
             } finally {
-                this.streaming = false;
-                if (this._rafId) {
-                    cancelAnimationFrame(this._rafId);
-                    this._rafId = null;
+                const inf = this._inflight[sid];
+                if (inf) {
+                    inf.active = false;
+                    inf.controller = null;
+                    if (inf.rafId) { cancelAnimationFrame(inf.rafId); inf.rafId = null; }
                 }
                 this.$nextTick(() => this.scrollToBottom());
             }
@@ -564,6 +602,29 @@ function chatApp() {
         scrollToBottom() {
             const el = this.$refs.messageArea;
             if (el) el.scrollTop = el.scrollHeight;
+        },
+
+        // Auto-generate session title after first user-assistant exchange
+        async _maybeGenerateTitle() {
+            const session = this.sessions.find(s => s.id === this.currentSession);
+            if (!session) return;
+            const title = session.title || '';
+            if (title !== '' && title !== '新对话') return;
+            const userMsgCount = this.messages.filter(m => m.role === 'user').length;
+            if (userMsgCount !== 1) return;
+
+            try {
+                const resp = await fetch('/api/sessions/' + this.currentSession + '/generate-title', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }
+                });
+                if (resp.ok) {
+                    const data = await resp.json();
+                    if (data.title) session.title = data.title;
+                }
+            } catch (e) {
+                console.error('Failed to generate title:', e);
+            }
         }
     };
 }

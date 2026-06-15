@@ -162,12 +162,10 @@
 </div>
 
 <script>
-// Standalone SSE parser
+// OpenAI-compatible SSE parser — parses JSON from data: lines
 function parseSSEStream(reader, callbacks) {
     const decoder = new TextDecoder();
     let buffer = '';
-    let eventType = 'message';
-
     return new Promise((resolve, reject) => {
         function processChunk({ done, value }) {
             if (done) { if (callbacks.onDone) callbacks.onDone(); resolve(); return; }
@@ -175,17 +173,16 @@ function parseSSEStream(reader, callbacks) {
             const lines = buffer.split('\n');
             buffer = lines.pop() || '';
             for (const line of lines) {
-                if (line.startsWith('event:') || line.startsWith('event: ')) {
-                    eventType = line.startsWith('event: ') ? line.slice(7).trim() : line.slice(6).trim();
-                    continue;
-                }
-                if (line.startsWith('data:') || line.startsWith('data: ')) {
-                    const data = line.startsWith('data: ') ? line.slice(6) : line.slice(5);
-                    if (data === '[DONE]') { if (callbacks.onDone) callbacks.onDone(); resolve(); return; }
-                    if (eventType === 'reasoning' && callbacks.onReasoning) callbacks.onReasoning(data);
-                    else if (callbacks.onMessage) callbacks.onMessage(data);
-                    eventType = 'message';
-                }
+                if (!line.startsWith('data:')) continue;
+                const data = line.startsWith('data: ') ? line.slice(6) : line.slice(5);
+                if (data === '[DONE]') { if (callbacks.onDone) callbacks.onDone(); resolve(); return; }
+                try {
+                    const chunk = JSON.parse(data);
+                    const delta = chunk.choices?.[0]?.delta;
+                    if (!delta) continue;
+                    if (delta.reasoning_content && callbacks.onReasoning) callbacks.onReasoning(delta.reasoning_content);
+                    if (delta.content && callbacks.onMessage) callbacks.onMessage(delta.content);
+                } catch (e) { /* skip unparseable */ }
             }
             reader.read().then(processChunk).catch(reject);
         }
@@ -300,9 +297,12 @@ function videoApp() {
             if (typeof marked !== 'undefined') {
                 try {
                     if (!this._markedConfigured) {
-                        marked.setOptions({ breaks: true, gfm: true });
+                        marked.setOptions({ breaks: true, gfm: true, silent: true });
                         this._markedConfigured = true;
                     }
+                    text = text
+                        .replace(/^(#{1,6})([^\s#])/gm, '$1 $2')
+                        .replace(/^([-*+])([^\s])/gm, '$1 $2');
                     return marked.parse(text);
                 } catch(e) { return text.replace(/\n/g, '<br>'); }
             }

@@ -136,8 +136,9 @@ func setupRoutes(r *gin.Engine, database *db.DB, client *mimo.Client, cfg *confi
 		api.POST("/sessions", handlers.CreateSession(database))
 		api.GET("/sessions", handlers.ListSessions(database))
 		api.DELETE("/sessions/:session_id", handlers.DeleteSession(database))
-		api.POST("/sessions/:session_id/messages", handlers.SendMessage(database, client))
+		api.POST("/sessions/:session_id/messages", handlers.SendMessage(database, client, cfg.Upload.TempDir))
 		api.GET("/sessions/:session_id/messages", handlers.ListMessages(database))
+		api.POST("/sessions/:session_id/generate-title", handlers.GenerateTitle(database, client))
 
 		// User info
 		api.GET("/me", func(c *gin.Context) {

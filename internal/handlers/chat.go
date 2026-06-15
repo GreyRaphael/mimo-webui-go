@@ -81,8 +81,86 @@ func DeleteSession(database *db.DB) gin.HandlerFunc {
 	}
 }
 
+// GenerateTitle calls MiMo API to generate a concise session title based on
+// the first user message, then updates the session in DB.
+func GenerateTitle(database *db.DB, client *mimo.Client) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		sessionID := c.Param("session_id")
+		user := middleware.GetAuthUser(c)
+
+		session, err := db.GetSession(c.Request.Context(), database, sessionID)
+		if err != nil || session == nil || session.UserID != user.UserID {
+			c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+			return
+		}
+
+		// Get the first user message
+		msgs, err := db.ListMessages(c.Request.Context(), database, sessionID, 5)
+		if err != nil || len(msgs) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "no messages"})
+			return
+		}
+
+		var firstUserMsg string
+		for _, m := range msgs {
+			if m.Role == "user" && m.Content != nil && *m.Content != "" {
+				firstUserMsg = *m.Content
+				break
+			}
+		}
+		if firstUserMsg == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "no user message found"})
+			return
+		}
+
+		// Call MiMo API to generate title
+		prompt := "请根据以下对话内容生成一个简短的标题（不超过15个字），只输出标题本身，不要任何标点符号或额外文字：\n\n" + firstUserMsg
+		messages := []mimo.Message{
+			{Role: "user", Content: mimo.TextContent(prompt)},
+		}
+
+		resp, err := client.ChatCompletion(c.Request.Context(), "mimo-v2.5", messages, false, nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate title"})
+			return
+		}
+		defer resp.Body.Close()
+
+		var chatResp mimo.ChatResponse
+		if err := json.NewDecoder(resp.Body).Decode(&chatResp); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to parse response"})
+			return
+		}
+
+		title := ""
+		if len(chatResp.Choices) > 0 && chatResp.Choices[0].Message != nil && chatResp.Choices[0].Message.Content != nil {
+			title = strings.TrimSpace(*chatResp.Choices[0].Message.Content)
+			// Remove surrounding quotes if any
+			title = strings.Trim(title, "\"'「」\u201c\u201d\u2018\u2019")
+		}
+
+		if title == "" {
+			// Fallback: use first 15 chars of user message
+			runes := []rune(firstUserMsg)
+			if len(runes) > 15 {
+				title = string(runes[:15]) + "..."
+			} else {
+				title = firstUserMsg
+			}
+		}
+
+		titlePtr := &title
+		if err := db.UpdateSessionTitle(c.Request.Context(), database, sessionID, titlePtr); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to update title"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"title": title})
+	}
+}
+
 // SendMessage sends a message to a chat session and returns the assistant's response.
-func SendMessage(database *db.DB, client *mimo.Client) gin.HandlerFunc {
+func SendMessage(database *db.DB, client *mimo.Client, uploadDir string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sessionID := c.Param("session_id")
 
@@ -114,8 +192,11 @@ func SendMessage(database *db.DB, client *mimo.Client) gin.HandlerFunc {
 		if req.MediaType != "" {
 			mediaTypePtr = &req.MediaType
 		}
+		// The frontend sends media_url = file_id (UUID).
+		// Save web-accessible URL for display, and resolve actual path for API.
 		if req.MediaURL != "" {
-			mediaURLPtr = &req.MediaURL
+			apiPath := "/api/media/" + req.MediaURL
+			mediaURLPtr = &apiPath
 		}
 
 		if _, err := db.CreateMessage(c.Request.Context(), database, sessionID, "user", contentPtr, mediaTypePtr, mediaURLPtr, nil); err != nil {
@@ -153,7 +234,15 @@ func SendMessage(database *db.DB, client *mimo.Client) gin.HandlerFunc {
 
 				// Convert local file paths to base64 data URIs
 				mediaURL := *m.MediaURL
-				if !strings.HasPrefix(mediaURL, "http") {
+				// Handle /api/media/{file_id} paths (stored in DB for display)
+				if strings.HasPrefix(mediaURL, "/api/media/") {
+					fileID := strings.TrimPrefix(mediaURL, "/api/media/")
+					if actualPath := findUploadPath(uploadDir, fileID); actualPath != "" {
+						mediaURL = actualPath
+					}
+				}
+				// Convert local file paths to base64 data URIs
+				if !strings.HasPrefix(mediaURL, "http") && !strings.HasPrefix(mediaURL, "data:") {
 					if dataURI, err := mimo.FileToBase64DataURI(mediaURL); err == nil {
 						mediaURL = dataURI
 					}
@@ -260,6 +349,14 @@ func SendMessage(database *db.DB, client *mimo.Client) gin.HandlerFunc {
 func ListMessages(database *db.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sessionID := c.Param("session_id")
+		user := middleware.GetAuthUser(c)
+
+		// Verify session ownership before returning messages
+		session, err := db.GetSession(c.Request.Context(), database, sessionID)
+		if err != nil || session == nil || session.UserID != user.UserID {
+			c.JSON(http.StatusNotFound, gin.H{"error": "session not found"})
+			return
+		}
 
 		msgs, err := db.ListMessages(c.Request.Context(), database, sessionID, 100)
 		if err != nil {
