@@ -184,6 +184,27 @@ function asrApp() {
         uploading: false,
         dragging: false,
 
+        // Restore state from sessionStorage (survives page navigation)
+
+        init() {
+            const saved = sessionStorage.getItem('asr_analysis');
+            if (saved) {
+                try {
+                    const d = JSON.parse(saved);
+                    if (d.result) this.result = d.result;
+                    if (d.reasoning) this.reasoning = d.reasoning;
+                    if (d.previewUrl) this.previewUrl = d.previewUrl;
+                    if (d.fileName) this.fileName = d.fileName;
+                    if (d.prompt) this.prompt = d.prompt;
+                    if (d.language) this.language = d.language;
+                    if (d.stream !== undefined) this.stream = d.stream;
+                } catch(e) {}
+            }
+        },
+        _saveState() {
+            sessionStorage.setItem('asr_analysis', JSON.stringify({result: this.result, reasoning: this.reasoning, previewUrl: this.previewUrl, fileName: this.fileName, language: this.language, stream: this.stream}));
+        },
+
         handleFile(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -226,6 +247,7 @@ function asrApp() {
             this.result = '';
             this.reasoning = '';
             this.error = '';
+            sessionStorage.removeItem('asr_analysis');
 
             try {
                 const body = {
@@ -265,6 +287,7 @@ function asrApp() {
                 this.error = e.message;
             } finally {
                 this.loading = false;
+                if (this.result) this._saveState();
             }
         },
 

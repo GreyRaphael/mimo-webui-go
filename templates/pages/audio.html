@@ -179,6 +179,25 @@ function audioApp() {
         uploading: false,
         dragging: false,
 
+        // Restore state from sessionStorage (survives page navigation)
+
+        init() {
+            const saved = sessionStorage.getItem('audio_analysis');
+            if (saved) {
+                try {
+                    const d = JSON.parse(saved);
+                    if (d.result) this.result = d.result;
+                    if (d.reasoning) this.reasoning = d.reasoning;
+                    if (d.previewUrl) this.previewUrl = d.previewUrl;
+                    if (d.fileName) this.fileName = d.fileName;
+                    if (d.prompt) this.prompt = d.prompt;
+                } catch(e) {}
+            }
+        },
+        _saveState() {
+            sessionStorage.setItem('audio_analysis', JSON.stringify({result: this.result, reasoning: this.reasoning, previewUrl: this.previewUrl, fileName: this.fileName, prompt: this.prompt}));
+        },
+
         handleFile(e) {
             const file = e.target.files[0];
             if (!file) return;
@@ -229,6 +248,7 @@ function audioApp() {
             this.result = '';
             this.reasoning = '';
             this.error = '';
+            sessionStorage.removeItem('audio_analysis');
 
             try {
                 const body = {
@@ -260,6 +280,7 @@ function audioApp() {
                 this.error = e.message;
             } finally {
                 this.loading = false;
+                if (this.result) this._saveState();
             }
         },
 

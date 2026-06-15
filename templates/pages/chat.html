@@ -335,12 +335,26 @@ function chatApp() {
         // Init / sessions / messages
         // -------------------------------------------------------
         async init() {
+            // Always load sessions list from DB
+            await this.loadSessions();
+
+            // Determine which session to view: URL param > sessionStorage > none
             const path = window.location.pathname;
-            const match = path.match(/\/chat\/(.+)/);
-            if (match) {
-                this.currentSession = match[1];
-                await this.loadSessions();
-                await this.loadMessages(match[1]);
+            const urlMatch = path.match(/\/chat\/(.+)/);
+            const savedSession = sessionStorage.getItem('chat_current_session');
+
+            const targetSession = urlMatch?.[1] || savedSession;
+
+            if (targetSession) {
+                // Verify the session still exists in the loaded list
+                const exists = this.sessions.some(s => s.id === targetSession);
+                if (exists) {
+                    this.currentSession = targetSession;
+                    if (!urlMatch?.[1]) {
+                        history.replaceState(null, '', '/chat/' + targetSession);
+                    }
+                    await this.loadMessages(targetSession);
+                }
             }
         },
 
@@ -373,6 +387,7 @@ function chatApp() {
         async selectSession(id) {
             this.currentSession = id;
             this.messages = [];
+            sessionStorage.setItem('chat_current_session', id);
             history.pushState(null, '', '/chat/' + id);
             await this.loadMessages(id);
         },
@@ -422,6 +437,7 @@ function chatApp() {
                     if (this.currentSession === id) {
                         this.currentSession = null;
                         this.messages = [];
+                        sessionStorage.removeItem('chat_current_session');
                         history.pushState(null, '', '/chat');
                     }
                 }

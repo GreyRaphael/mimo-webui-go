@@ -203,6 +203,27 @@ function videoApp() {
         loading: false,
         uploading: false,
         dragging: false,
+
+        // Restore state from sessionStorage (survives page navigation)
+
+        init() {
+            const saved = sessionStorage.getItem('video_analysis');
+            if (saved) {
+                try {
+                    const d = JSON.parse(saved);
+                    if (d.result) this.result = d.result;
+                    if (d.reasoning) this.reasoning = d.reasoning;
+                    if (d.previewUrl) this.previewUrl = d.previewUrl;
+                    if (d.fileName) this.fileName = d.fileName;
+                    if (d.prompt) this.prompt = d.prompt;
+                    if (d.fps) this.fps = d.fps;
+                    if (d.mediaResolution) this.mediaResolution = d.mediaResolution;
+                } catch(e) {}
+            }
+        },
+        _saveState() {
+            sessionStorage.setItem('video_analysis', JSON.stringify({result: this.result, reasoning: this.reasoning, previewUrl: this.previewUrl, fileName: this.fileName, prompt: this.prompt, fps: this.fps, mediaResolution: this.mediaResolution}));
+        },
         fps: 2.0,
         mediaResolution: 'default',
 
@@ -256,6 +277,7 @@ function videoApp() {
             this.result = '';
             this.reasoning = '';
             this.error = '';
+            sessionStorage.removeItem('video_analysis');
 
             try {
                 const body = {
@@ -289,6 +311,7 @@ function videoApp() {
                 this.error = e.message;
             } finally {
                 this.loading = false;
+                if (this.result) this._saveState();
             }
         },
 
