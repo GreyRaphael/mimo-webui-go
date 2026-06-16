@@ -362,6 +362,9 @@ function chatApp() {
                     history.replaceState(null, '', '/chat/' + targetSession);
                 }
                 await this.loadMessages(targetSession);
+                // If last message is from user (no assistant reply yet), poll until it appears
+                // This handles the case where backend is still streaming when page reloads
+                this._startReplyPolling(targetSession);
             } else {
                 // No valid session — clear stale sessionStorage, stay on /chat
                 sessionStorage.removeItem('chat_current_session');
@@ -601,6 +604,7 @@ function chatApp() {
                             media_type: null
                         });
                         this.$nextTick(() => this.scrollToBottom());
+                        this._stopReplyPolling();
                         this._maybeGenerateTitle();
                     }
                     // If switched away: message already saved to DB by backend,
@@ -635,6 +639,36 @@ function chatApp() {
         scrollToBottom() {
             const el = this.$refs.messageArea;
             if (el) el.scrollTop = el.scrollHeight;
+        },
+
+        // Poll for assistant reply when backend might still be streaming
+        _replyPollInterval: null,
+        _startReplyPolling(sessionId) {
+            this._stopReplyPolling();
+            // Check if last message is from user (no assistant reply yet)
+            const lastMsg = this.messages[this.messages.length - 1];
+            if (!lastMsg || lastMsg.role !== 'user') return;
+
+            this._replyPollInterval = setInterval(async () => {
+                // Stop if user switched to a different session
+                if (this.currentSession !== sessionId) {
+                    this._stopReplyPolling();
+                    return;
+                }
+                await this.loadMessages(sessionId);
+                // Check if assistant reply now exists
+                const last = this.messages[this.messages.length - 1];
+                if (last && last.role === 'assistant') {
+                    this._stopReplyPolling();
+                    this._maybeGenerateTitle();
+                }
+            }, 2000); // poll every 2 seconds
+        },
+        _stopReplyPolling() {
+            if (this._replyPollInterval) {
+                clearInterval(this._replyPollInterval);
+                this._replyPollInterval = null;
+            }
         },
 
         // Auto-generate session title after first user-assistant exchange
