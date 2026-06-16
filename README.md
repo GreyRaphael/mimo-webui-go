@@ -118,6 +118,8 @@ go build -o mimo-webui .
 
 ### 从 Release 安装（推荐）
 
+无需 Go 环境，直接下载预编译二进制：
+
 ```bash
 # 1. 从 GitHub Releases 下载
 # https://github.com/GreyRaphael/mimo-webui-go/releases
@@ -130,18 +132,27 @@ cd mimo-webui-*-linux-amd64
 # 3. 安装到 systemd
 sudo bash install.sh
 
-# 4. 编辑配置
+# 4. 编辑配置（填入 API Key 和 admin 密码）
 sudo nano /etc/mimo-webui/config.toml
 
 # 5. 重启服务
 sudo systemctl restart mimo-webui
 ```
 
-安装后：
-- 二进制文件：`/usr/local/bin/mimo-webui`
-- 配置文件：`/etc/mimo-webui/config.toml`
-- 数据库：`/etc/mimo-webui/mimo-webui.db`
-- 查看日志：`journalctl -u mimo-webui -f`
+安装后文件布局：
+```
+/usr/local/bin/mimo-webui              # 二进制文件
+/etc/mimo-webui/config.toml            # 配置文件
+/etc/mimo-webui/mimo-webui.db          # SQLite 数据库（自动创建）
+```
+
+常用运维命令：
+```bash
+journalctl -u mimo-webui -f            # 实时日志
+sudo systemctl restart mimo-webui      # 重启
+sudo systemctl stop mimo-webui         # 停止
+sudo systemctl status mimo-webui       # 状态
+```
 
 ### 卸载
 
@@ -149,12 +160,48 @@ sudo systemctl restart mimo-webui
 sudo bash uninstall.sh
 ```
 
+交互式询问是否删除配置和数据。
+
 ### 发布新版本
 
+当代码推送到 GitHub 并打上 `v*` 标签时，GitHub Actions 自动编译 Linux 二进制并发布到 Releases。
+
 ```bash
+# 方式 1：gh CLI（推荐）
+gh auth login                          # 首次登录
 git tag v1.0.0
+git push origin main
+git push origin v1.0.0                 # → 自动触发 CI → 发布 Release
+
+# 方式 2：Personal Access Token
+# 在 https://github.com/settings/tokens 创建 token（勾选 repo 权限）
+git remote set-url origin https://<TOKEN>@github.com/GreyRaphael/mimo-webui-go.git
+git tag v1.0.0
+git push origin main
 git push origin v1.0.0
-# GitHub Actions 自动构建并发布到 Releases
+```
+
+GitHub Actions 流程（`.github/workflows/release.yml`）：
+```
+push tag v* → checkout → go build (linux/amd64) → 打包 tar.gz → 创建 Release
+```
+
+Release 包内容：
+```
+mimo-webui-v1.0.0-linux-amd64/
+├── mimo-webui              # Go 二进制（内嵌 templates + static）
+├── config.toml.example     # 配置模板
+├── install.sh              # 安装脚本
+└── uninstall.sh            # 卸载脚本
+```
+
+### 从源码构建
+
+```bash
+git clone https://github.com/GreyRaphael/mimo-webui-go.git
+cd mimo-webui-go
+go build -o mimo-webui .
+./mimo-webui -config config.toml
 ```
 
 ## 配置
