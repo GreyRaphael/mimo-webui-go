@@ -1,5 +1,8 @@
 /* MiMo WebUI - Custom Styles */
 
+/* Global: one size smaller */
+html { font-size: 14px; }
+
 /* ============================================================
    Base / Typography
    ============================================================ */

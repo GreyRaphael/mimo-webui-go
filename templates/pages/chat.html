@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="/static/css/custom.css">
     <script src="/static/js/app.js"></script>
 </head>
-<body class="h-full bg-gray-900 text-gray-100" x-data="{...mobileNavApp(), ...chatApp()}" x-init="init()">
+<body class="h-full bg-gray-900 text-gray-100" x-data="chatApp()" x-init="init()">
 
 <!-- Mobile: Nav overlay (tap to close) -->
 <div x-show="navOpen" @click="closeNav()" class="md:hidden fixed inset-0 bg-black/50 z-40" style="display:none"></div>
@@ -264,6 +264,15 @@ if (typeof marked !== 'undefined') {
 // ============================================================
 function chatApp() {
     return {
+        // Mobile nav state
+        navOpen: false,
+        sessionDrawerOpen: false,
+        toggleNav() { this.navOpen = !this.navOpen; },
+        closeNav() { this.navOpen = false; },
+        toggleSessionDrawer() { this.sessionDrawerOpen = !this.sessionDrawerOpen; },
+        closeSessionDrawer() { this.sessionDrawerOpen = false; },
+
+        // Chat state
         sessions: [],
         currentSession: null,
         messages: [],

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -276,8 +277,9 @@ func SendMessage(database *db.DB, client *mimo.Client, uploadDir string) gin.Han
 		// If the current request has media but wasn't in the last DB message (edge case), handle inline.
 		// The user message was already saved above, so it's already in recentMsgs.
 
-		// Call MiMo API.
-		resp, err := client.ChatCompletion(c.Request.Context(), session.Model, messages, req.Stream, nil)
+		// Call MiMo API with background context (detached from browser connection).
+		// If browser navigates away mid-stream, the API continues and message is saved to DB.
+		resp, err := client.ChatCompletion(context.Background(), session.Model, messages, req.Stream, nil)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to call AI API"})
 			return
@@ -315,7 +317,7 @@ func SendMessage(database *db.DB, client *mimo.Client, uploadDir string) gin.Han
 				if fullReasoning != "" {
 					reasoningPtr = &fullReasoning
 				}
-				db.CreateMessage(c.Request.Context(), database, sessionID, "assistant", &assistantContent, nil, nil, reasoningPtr)
+				db.CreateMessage(context.Background(), database, sessionID, "assistant", &assistantContent, nil, nil, reasoningPtr)
 			}
 		} else {
 			// Non-streaming response.
