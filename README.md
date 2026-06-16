@@ -114,6 +114,49 @@ go build -o mimo-webui .
 # 默认账号：admin / config.toml 中的 admin_password
 ```
 
+## 部署
+
+### 从 Release 安装（推荐）
+
+```bash
+# 1. 从 GitHub Releases 下载
+# https://github.com/GreyRaphael/mimo-webui-go/releases
+wget https://github.com/GreyRaphael/mimo-webui-go/releases/download/v1.0.0/mimo-webui-v1.0.0-linux-amd64.tar.gz
+
+# 2. 解压
+tar xzf mimo-webui-*-linux-amd64.tar.gz
+cd mimo-webui-*-linux-amd64
+
+# 3. 安装到 systemd
+sudo bash install.sh
+
+# 4. 编辑配置
+sudo nano /etc/mimo-webui/config.toml
+
+# 5. 重启服务
+sudo systemctl restart mimo-webui
+```
+
+安装后：
+- 二进制文件：`/usr/local/bin/mimo-webui`
+- 配置文件：`/etc/mimo-webui/config.toml`
+- 数据库：`/etc/mimo-webui/mimo-webui.db`
+- 查看日志：`journalctl -u mimo-webui -f`
+
+### 卸载
+
+```bash
+sudo bash uninstall.sh
+```
+
+### 发布新版本
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+# GitHub Actions 自动构建并发布到 Releases
+```
+
 ## 配置
 
 ```toml

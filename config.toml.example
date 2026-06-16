@@ -30,4 +30,4 @@ file_expiry_minutes = 60
 requests_per_minute = 30
 
 [database]
-path = "mimo-webui.db"
+path = "/etc/mimo-webui/mimo-webui.db"

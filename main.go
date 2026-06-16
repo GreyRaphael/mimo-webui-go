@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"flag"
 	"fmt"
 	"html/template"
 	"io/fs"
@@ -28,12 +29,14 @@ var templateFS embed.FS
 var staticFS embed.FS
 
 func main() {
-	cfgPath := "config.toml"
+	cfgPath := flag.String("config", "config.toml", "配置文件路径")
+	flag.Parse()
+
 	if v := os.Getenv("CONFIG_PATH"); v != "" {
-		cfgPath = v
+		*cfgPath = v
 	}
 
-	cfg, err := config.Load(cfgPath)
+	cfg, err := config.Load(*cfgPath)
 	if err != nil {
 		log.Fatalf("load config: %v", err)
 	}
