@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"mimo-webui/internal/db"
+	"mimo-webui/internal/middleware"
 	"mimo-webui/internal/mimo"
 )
 
@@ -17,8 +19,14 @@ type asrRequest struct {
 
 // ASRHandler returns a handler that sends audio to the MiMo ASR API for
 // speech recognition, optionally streaming the response via SSE.
-func ASRHandler(client *mimo.Client, uploadDir string) gin.HandlerFunc {
+func ASRHandler(database *db.DB, uploadDir string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		user := middleware.GetAuthUser(c)
+		sess, err := getMiMoSession(database, user.UserID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		var req asrRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
@@ -59,7 +67,7 @@ func ASRHandler(client *mimo.Client, uploadDir string) gin.HandlerFunc {
 			},
 		}
 
-		resp, err := client.ChatCompletion(c.Request.Context(), "mimo-v2.5-asr", messages, req.Stream, extra)
+		resp, err := sess.Client.ChatCompletion(c.Request.Context(), sess.ModelVersion+"-asr", messages, req.Stream, extra)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "chat completion: " + err.Error()})
 			return

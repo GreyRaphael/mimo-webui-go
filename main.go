@@ -19,7 +19,6 @@ import (
 	"mimo-webui/internal/db"
 	"mimo-webui/internal/handlers"
 	"mimo-webui/internal/middleware"
-	"mimo-webui/internal/mimo"
 )
 
 //go:embed templates/*
@@ -41,10 +40,6 @@ func main() {
 		log.Fatalf("load config: %v", err)
 	}
 
-	if cfg.MiMo.APIKey == "" {
-		log.Fatal("MIMO_API_KEY is required (set in config.toml or environment)")
-	}
-
 	database, err := db.Open(cfg.Database.Path)
 	if err != nil {
 		log.Fatalf("open database: %v", err)
@@ -55,8 +50,6 @@ func main() {
 	if err := ensureDefaultAdmin(database, cfg.Auth.AdminPassword); err != nil {
 		log.Fatalf("ensure default admin: %v", err)
 	}
-
-	mimoClient := mimo.NewClient(cfg.MiMo.BaseURL, cfg.MiMo.APIKey)
 
 	// Ensure upload dir exists
 	os.MkdirAll(cfg.Upload.TempDir, 0o755)
@@ -82,7 +75,7 @@ func main() {
 		AllowCredentials: true,
 	}))
 
-	setupRoutes(r, database, mimoClient, cfg)
+	setupRoutes(r, database, cfg)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	log.Printf("MiMo WebUI starting on %s", addr)
@@ -91,7 +84,7 @@ func main() {
 	}
 }
 
-func setupRoutes(r *gin.Engine, database *db.DB, client *mimo.Client, cfg *config.Config) {
+func setupRoutes(r *gin.Engine, database *db.DB, cfg *config.Config) {
 	// Public routes
 	r.GET("/login", handlers.LoginPage())
 	r.GET("/register", handlers.RegisterPage())
@@ -129,19 +122,19 @@ func setupRoutes(r *gin.Engine, database *db.DB, client *mimo.Client, cfg *confi
 		api.GET("/media/:file_id", handlers.MediaServeHandler(cfg.Upload.TempDir))
 
 		// Multimodal understanding
-		api.POST("/image", handlers.ImageUnderstandingHandler(client, cfg.Upload.TempDir))
-		api.POST("/audio", handlers.AudioUnderstandingHandler(client, cfg.Upload.TempDir))
-		api.POST("/video", handlers.VideoUnderstandingHandler(client, cfg.Upload.TempDir))
-		api.POST("/asr", handlers.ASRHandler(client, cfg.Upload.TempDir))
-		api.POST("/tts", handlers.TTSHandler(client, cfg.Upload.TempDir))
+		api.POST("/image", handlers.ImageUnderstandingHandler(database, cfg.Upload.TempDir))
+		api.POST("/audio", handlers.AudioUnderstandingHandler(database, cfg.Upload.TempDir))
+		api.POST("/video", handlers.VideoUnderstandingHandler(database, cfg.Upload.TempDir))
+		api.POST("/asr", handlers.ASRHandler(database, cfg.Upload.TempDir))
+		api.POST("/tts", handlers.TTSHandler(database, cfg.Upload.TempDir))
 
 		// Chat sessions
 		api.POST("/sessions", handlers.CreateSession(database))
 		api.GET("/sessions", handlers.ListSessions(database))
 		api.DELETE("/sessions/:session_id", handlers.DeleteSession(database))
-		api.POST("/sessions/:session_id/messages", handlers.SendMessage(database, client, cfg.Upload.TempDir))
+		api.POST("/sessions/:session_id/messages", handlers.SendMessage(database, cfg.Upload.TempDir))
 		api.GET("/sessions/:session_id/messages", handlers.ListMessages(database))
-		api.POST("/sessions/:session_id/generate-title", handlers.GenerateTitle(database, client))
+		api.POST("/sessions/:session_id/generate-title", handlers.GenerateTitle(database))
 
 		// User info
 		api.GET("/me", func(c *gin.Context) {
@@ -152,6 +145,10 @@ func setupRoutes(r *gin.Engine, database *db.DB, client *mimo.Client, cfg *confi
 				"role":     user.Role,
 			})
 		})
+
+		// User settings (per-user API key, base_url, etc.)
+		api.GET("/settings", handlers.GetSettings(database))
+		api.PUT("/settings", handlers.UpdateSettings(database))
 	}
 }
 

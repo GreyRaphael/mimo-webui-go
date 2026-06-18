@@ -53,6 +53,13 @@ CREATE TABLE IF NOT EXISTS uploads (
 CREATE INDEX IF NOT EXISTS idx_sessions_user ON sessions(user_id);
 CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
 CREATE INDEX IF NOT EXISTS idx_uploads_expires ON uploads(expires_at);
+
+CREATE TABLE IF NOT EXISTS settings (
+    user_id INTEGER NOT NULL REFERENCES users(id),
+    name    TEXT    NOT NULL,
+    value   TEXT,
+    PRIMARY KEY (user_id, name)
+);
 `
 
 type DB struct {

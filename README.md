@@ -4,14 +4,19 @@
 
 ## 功能
 
-| 功能 | 模型 | 说明 |
-|------|------|------|
-| 💬 对话 | `mimo-v2.5` / `mimo-v2.5-pro` | 多 session、流式输出、推理过程展示、附件上传、自动标题生成 |
-| 🖼️ 图片理解 | `mimo-v2.5` | 上传图片或输入 URL，AI 分析图片内容 |
-| 🎵 音频理解 | `mimo-v2.5` | 上传音频，AI 分析音频内容 |
-| 🎬 视频理解 | `mimo-v2.5` | 上传视频或输入 URL，可调帧率和分辨率 |
-| 🎤 语音识别 | `mimo-v2.5-asr` | WAV/MP3 语音转文字，支持中英文 |
-| 🔊 语音合成 | `mimo-v2.5-tts` | 8 种预置音色 + 声音设计 + 声音克隆 |
+| 功能 | 说明 |
+|------|------|
+| 💬 对话 | 多 session、流式输出、推理过程展示、附件上传、自动标题生成 |
+| 🖼️ 图片理解 | 上传图片或输入 URL，AI 分析图片内容 |
+| 🎵 音频理解 | 上传音频，AI 分析音频内容 |
+| 🎬 视频理解 | 上传视频或输入 URL，可调帧率和分辨率 |
+| 🎤 语音识别 | WAV/MP3 语音转文字，支持中英文 |
+| 🔊 语音合成 | 8 种预置音色 + 声音设计 + 声音克隆 |
+
+模型名由用户在前端设置中配置的基础模型名自动拼接后缀：
+- 对话/图片/音频/视频：`{model_version}`
+- 语音识别：`{model_version}-asr`
+- 语音合成：`{model_version}-tts` / `-tts-voicedesign` / `-tts-voiceclone`
 
 ## 架构
 
@@ -19,100 +24,71 @@
 graph TB
     subgraph Browser["浏览器"]
         direction TB
+        Settings["⚙️ 用户设置<br/>API Key / Base URL / Model"]
         Chat["💬 对话<br/>INFLIGHT per-session 流式"]
         Multi["🖼️🎵🎬🎤🔊<br/>多模态理解"]
-        Auth["🔒 登录/注册"]
 
-        Chat --> SSE["SSE 流式解析<br/>parseSSEStream"]
+        Settings -->|"per-user"| DB1[("SQLite<br/>settings 表")]
+        Chat --> SSE["SSE 流式解析"]
         Multi --> SSE
     end
 
     subgraph GoServer["Go 后端 (Gin)"]
         direction TB
         MW["JWT 认证中间件"]
-        Upload["文件上传<br/>MIME 检测 + 大小校验"]
-        Relay["SSE Relay<br/>原始转发，零重编码"]
-        Client["MiMo API Client<br/>context.Background()<br/>浏览器断开不影响 API"]
-        Title["标题生成<br/>首条消息 → MiMo → 标题"]
-        Cleanup["临时文件清理<br/>定时删除过期文件"]
+        Upload["文件上传"]
+        Relay["SSE Relay<br/>原始转发"]
+        Client["Per-request MiMo Client<br/>读取用户 settings"]
+        Title["标题生成"]
     end
 
     subgraph Storage["存储"]
-        SQLite[("SQLite<br/>用户·会话·消息")]
-        TmpFS["/tmp/mimo-uploads<br/>临时文件"]
+        SQLite[("SQLite<br/>用户·会话·消息·设置")]
+        TmpFS["/tmp/mimo-uploads"]
     end
 
-    subgraph MiMo["MiMo API"]
-        ChatAPI["/v1/chat/completions<br/>流式 SSE"]
-        ASRAPI["mimo-v2.5-asr"]
-        TTSAPI["mimo-v2.5-tts<br/>tts-voicedesign<br/>tts-voiceclone"]
+    subgraph MiMo["MiMo API (用户配置)"]
+        ChatAPI["/v1/chat/completions"]
     end
 
-    Browser -->|"HTTP/HTTPS"| MW
-    MW --> Upload
-    MW --> Relay
-    MW --> Title
+    Browser -->|HTTP| MW
+    MW --> Upload & Relay & Title
     Upload --> TmpFS
-    Relay --> Client
-    Title --> Client
-    Client -->|OpenAI Chat API| ChatAPI
-    Client --> ChatAPI
-    Client --> ASRAPI
-    Client --> TTSAPI
-    ChatAPI -->|SSE| Relay
-    Relay -->|"text/event-stream"| Browser
+    Relay & Title --> Client
+    Client -->|"base_url + api_key<br/>来自用户 settings"| ChatAPI
+    ChatAPI -->|SSE| Relay -->|text/event-stream| Browser
     MW --> SQLite
-    Cleanup -.->|定期清理| TmpFS
-```
-
-## 技术栈
-
-```mermaid
-graph LR
-    subgraph Backend["后端 (Go)"]
-        Gin["Gin<br/>Web 框架"]
-        SQLite[("modernc.org/sqlite<br/>纯 Go SQLite")]
-        JWT["golang-jwt/v5<br/>JWT 认证"]
-        Embed["embed.FS<br/>静态资源嵌入"]
-    end
-
-    subgraph Frontend["前端 (零构建)"]
-        Alpine["Alpine.js 3<br/>响应式交互"]
-        Tailwind["Tailwind CSS CDN<br/>实用优先样式"]
-        Marked["marked.js<br/>Markdown 渲染"]
-    end
-
-    subgraph Infra["基础设施"]
-        Config["config.toml<br/>TOML 配置"]
-        Binary["单二进制<br/>无运行时依赖"]
-    end
-
-    Gin --> SQLite
-    Gin --> Embed
-    Embed --> Alpine
-    Embed --> Tailwind
-    Embed --> Marked
 ```
 
 ## 快速开始
 
 ```bash
-# 1. 克隆
+# 1. 克隆 & 构建
 git clone https://github.com/GreyRaphael/mimo-webui-go.git
 cd mimo-webui-go
-
-# 2. 配置
 cp config.toml.example config.toml
-# 编辑 config.toml，填入你的 MiMo API Key
-
-# 3. 构建 & 运行
 go build -o mimo-webui .
 ./mimo-webui
 
-# 4. 访问
-# http://localhost:3000
-# 默认账号：admin / config.toml 中的 admin_password
+# 2. 访问 http://localhost:3000
+# 3. 登录（默认 admin / config.toml 中的 admin_password）
+# 4. 点击左下角 👤 admin ⚙️ 打开设置，填入：
+#    - API Base URL: https://api.xiaomimimo.com/v1
+#    - API Key: 你的 MiMo API Key
+#    - 模型版本: mimo-v2.5
 ```
+
+## 用户设置
+
+API 密钥和模型配置通过前端设置弹窗管理，**不在 config.toml 中**。每个用户独立配置，存储在 SQLite `settings` 表中。
+
+点击左下角用户名 → ⚙️ 打开设置弹窗：
+
+| 设置项 | 说明 | 示例 |
+|--------|------|------|
+| API Base URL | MiMo API 地址 | `https://api.xiaomimimo.com/v1` |
+| 模型版本 | 基础模型名，自动拼接后缀 | `mimo-v2.5` / `mimo-v2.5-pro` |
+| API Key | MiMo API 密钥 | `tp-xxxx...` |
 
 ## 部署
 
@@ -122,28 +98,25 @@ go build -o mimo-webui .
 
 ```bash
 # 1. 从 GitHub Releases 下载
-# https://github.com/GreyRaphael/mimo-webui-go/releases
 wget https://github.com/GreyRaphael/mimo-webui-go/releases/download/v1.0.0/mimo-webui-v1.0.0-linux-amd64.tar.gz
 
-# 2. 解压
+# 2. 解压 & 安装
 tar xzf mimo-webui-*-linux-amd64.tar.gz
 cd mimo-webui-*-linux-amd64
-
-# 3. 安装到 systemd
 sudo bash install.sh
 
-# 4. 编辑配置（填入 API Key 和 admin 密码）
+# 3. 编辑配置
 sudo nano /etc/mimo-webui/config.toml
 
-# 5. 重启服务
+# 4. 重启
 sudo systemctl restart mimo-webui
 ```
 
 安装后文件布局：
 ```
-/usr/local/bin/mimo-webui              # 二进制文件
-/etc/mimo-webui/config.toml            # 配置文件
-/etc/mimo-webui/mimo-webui.db          # SQLite 数据库（自动创建）
+/usr/local/bin/mimo-webui              # 二进制
+/etc/mimo-webui/config.toml            # 服务配置
+/etc/mimo-webui/mimo-webui.db          # 数据库（自动创建）
 ```
 
 常用运维命令：
@@ -151,7 +124,6 @@ sudo systemctl restart mimo-webui
 journalctl -u mimo-webui -f            # 实时日志
 sudo systemctl restart mimo-webui      # 重启
 sudo systemctl stop mimo-webui         # 停止
-sudo systemctl status mimo-webui       # 状态
 ```
 
 ### 卸载
@@ -160,60 +132,35 @@ sudo systemctl status mimo-webui       # 状态
 sudo bash uninstall.sh
 ```
 
-交互式询问是否删除配置和数据。
-
 ### 发布新版本
-
-当代码推送到 GitHub 并打上 `v*` 标签时，GitHub Actions 自动编译 Linux 二进制并发布到 Releases。
 
 ```bash
 # 方式 1：gh CLI（推荐）
-gh auth login                          # 首次登录
-git tag v1.0.0
-git push origin main
-git push origin v1.0.0                 # → 自动触发 CI → 发布 Release
+gh auth login
+git tag v1.0.0 && git push origin main && git push origin v1.0.0
 
 # 方式 2：Personal Access Token
-# 在 https://github.com/settings/tokens 创建 token（勾选 repo 权限）
 git remote set-url origin https://<TOKEN>@github.com/GreyRaphael/mimo-webui-go.git
-git tag v1.0.0
-git push origin main
-git push origin v1.0.0
+git tag v1.0.0 && git push origin main && git push origin v1.0.0
 ```
 
-GitHub Actions 流程（`.github/workflows/release.yml`）：
-```
-push tag v* → checkout → go build (linux/amd64) → 打包 tar.gz → 创建 Release
-```
-
-Release 包内容：
-```
-mimo-webui-v1.0.0-linux-amd64/
-├── mimo-webui              # Go 二进制（内嵌 templates + static）
-├── config.toml.example     # 配置模板
-├── install.sh              # 安装脚本
-└── uninstall.sh            # 卸载脚本
-```
+GitHub Actions 流程：`push tag v*` → 编译 linux/amd64 → 打包 tar.gz → 创建 Release
 
 ### 从源码构建
 
 ```bash
-git clone https://github.com/GreyRaphael/mimo-webui-go.git
-cd mimo-webui-go
 go build -o mimo-webui .
 ./mimo-webui -config config.toml
 ```
 
 ## 配置
 
+`config.toml` 只包含服务端配置，**不包含 API 密钥**：
+
 ```toml
 [server]
 host = "0.0.0.0"
 port = 3000
-
-[mimo]
-api_key = "your-mimo-api-key"        # 或 MIMO_API_KEY 环境变量
-base_url = "https://api.xiaomimimo.com/v1"
 
 [auth]
 jwt_secret = "change-me"              # 生产环境必须修改
@@ -226,7 +173,7 @@ max_video_mb = 500
 temp_dir = "/tmp/mimo-uploads"
 
 [database]
-path = "mimo-webui.db"
+path = "/etc/mimo-webui/mimo-webui.db"
 ```
 
 ## 项目结构
@@ -236,111 +183,45 @@ mimo-webui-go/
 ├── main.go                      # 入口 + 路由注册
 ├── config.toml.example          # 配置模板
 ├── internal/
-│   ├── config/config.go         # TOML 配置解析
+│   ├── config/config.go         # TOML 配置解析（仅服务端配置）
 │   ├── auth/                    # JWT + bcrypt
-│   ├── db/                      # SQLite CRUD (users/sessions/messages)
+│   ├── db/                      # SQLite CRUD
+│   │   ├── users.go             # 用户
+│   │   ├── sessions.go          # 会话
+│   │   ├── messages.go          # 消息
+│   │   └── settings.go          # 用户设置 (api_key, base_url, model_version)
 │   ├── mimo/                    # MiMo API Client + SSE + TTS
-│   ├── handlers/                # HTTP Handlers
-│   │   ├── chat.go              # 对话 (INFLIGHT 流式 + 标题生成)
+│   ├── handlers/
+│   │   ├── chat.go              # 对话 (INFLIGHT 流式)
+│   │   ├── settings.go          # GET/PUT /api/settings
+│   │   ├── mimo_client.go       # Per-request client (用户 settings → MiMo client)
 │   │   ├── image/audio/video.go # 多模态理解
-│   │   ├── asr.go               # 语音识别
-│   │   ├── tts.go               # 语音合成
-│   │   ├── upload.go            # 文件上传 + 媒体服务
-│   │   └── relay.go             # SSE 原始转发
+│   │   ├── asr.go / tts.go      # ASR / TTS
+│   │   └── upload.go / relay.go # 文件上传 / SSE 转发
 │   └── middleware/              # JWT 认证 + 临时文件清理
-├── templates/pages/             # Go HTML 模板 (Alpine.js)
+├── templates/pages/             # Alpine.js 前端页面
 ├── static/
-│   ├── css/custom.css           # 全局样式 + 移动端适配
-│   └── js/app.js                # IndexedDB + 移动端导航
-└── mimo-webui.db                # SQLite 数据库 (自动生成)
+│   ├── css/custom.css           # 样式 + 移动端适配
+│   └── js/app.js                # 导航 + 设置 + IndexedDB
+└── deploy/
+    ├── install.sh               # systemd 安装
+    └── uninstall.sh             # 卸载
 ```
 
 ## 关键设计
 
+### Per-User MiMo Client
+
+每个请求从 SQLite `settings` 表读取用户的 `api_key`、`base_url`、`model_version`，创建独立的 MiMo API Client。不依赖全局配置。
+
 ### INFLIGHT 流式模式
 
-借鉴 [nesquena/hermes-webui](https://github.com/nesquena/hermes-webui) 的 per-session 状态管理：
-
-```mermaid
-sequenceDiagram
-    participant U as 用户
-    participant FE as 前端 (Alpine.js)
-    participant BE as 后端 (Go)
-    participant API as MiMo API
-
-    U->>FE: 发送消息 (session1)
-    FE->>FE: _inflight[session1] = {buffer, reasoning, active}
-    FE->>BE: POST /api/sessions/1/messages
-    BE->>API: ChatCompletion(context.Background())
-    
-    loop SSE 流式
-        API-->>BE: data: {"delta":{"content":"你"}}
-        BE-->>FE: data: {"delta":{"content":"你"}}
-        FE->>FE: inf.buffer += "你"
-        FE->>FE: _scheduleStreamRender() (rAF 节流)
-    end
-
-    U->>FE: 切换到 session2
-    FE->>FE: currentSession = session2
-    FE->>FE: 流式气泡消失 (只渲染 _current)
-    Note over FE: session1 的流继续在后台累积
-
-    API-->>BE: data: [DONE]
-    BE->>BE: db.CreateMessage(session1, content)
-    
-    U->>FE: 切回 session1
-    FE->>BE: loadMessages(session1)
-    BE-->>FE: 包含 assistant 回复 ✓
-```
-
-### 浏览器断开恢复
-
-```mermaid
-sequenceDiagram
-    participant U as 用户
-    participant FE as 前端
-    participant BE as 后端
-    participant API as MiMo API
-
-    U->>FE: 对话中，AI 正在输出
-    FE->>BE: SSE 流式连接
-    BE->>API: context.Background()
-    
-    U->>FE: 导航到"图片理解" (页面跳转)
-    FE--xBE: 浏览器关闭连接
-    
-    Note over BE: handler 继续运行<br/>relaySSEStream 继续读取 API<br/>浏览器写入失败但被忽略
-    
-    API-->>BE: SSE 流继续...
-    API-->>BE: data: [DONE]
-    BE->>BE: db.CreateMessage ✓
-    
-    U->>FE: 回到"对话"页面
-    FE->>FE: init() → loadMessages()
-    FE->>BE: GET /api/sessions/1/messages
-    BE-->>FE: 包含完整回复 ✓
-    
-    Note over FE: 如果回到时流还没结束<br/>_startReplyPolling 每2秒轮询<br/>直到回复出现
-```
+借鉴 [nesquena/hermes-webui](https://github.com/nesquena/hermes-webui)，per-session 流式状态存储在 `_inflight[sid]` 中。切换 session 只改变视图，不中断流。浏览器断开后，后端用 `context.Background()` 继续接收 API 响应并保存到 DB。
 
 ### 移动端适配
 
-```mermaid
-graph TB
-    subgraph Desktop["PC 端 (≥768px)"]
-        D1["w-56 导航栏"] --> D2["w-64 Session 列表"]
-        D2 --> D3["flex-1 聊天区域"]
-    end
-
-    subgraph Mobile["移动端 (<768px)"]
-        M1["☰ 汉堡菜单"] --> M2["全宽内容区"]
-        M3["📋 Session 切换"] --> M2
-        M2 --> M4["输入区"]
-        
-        MDrawer["导航抽屉<br/>(点击☰滑出)"]
-        MSession["Session 抽屉<br/>(点击📋滑出)"]
-    end
-```
+- PC 端：三栏布局（导航 + Session 列表 + 内容区）
+- 移动端：☰ 汉堡菜单滑出导航抽屉，📋 按钮滑出 Session 列表
 
 ## API 端点
 
@@ -348,6 +229,8 @@ graph TB
 |------|------|------|
 | POST | `/api/register` | 注册 |
 | POST | `/api/login` | 登录 |
+| GET | `/api/settings` | 获取用户设置 |
+| PUT | `/api/settings` | 更新用户设置 |
 | GET | `/api/sessions` | 列出 sessions |
 | POST | `/api/sessions` | 创建 session |
 | DELETE | `/api/sessions/:id` | 删除 session |

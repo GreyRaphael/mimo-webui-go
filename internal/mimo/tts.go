@@ -14,6 +14,7 @@ type TTSRequest struct {
 	Voice            string // voice ID for preset mode
 	AudioFormat      string // "wav" or "pcm16"
 	ModelVariant     string // "preset" | "design" | "clone"
+	ModelVersion     string // base model prefix, e.g. "mimo-v2.5"
 	Stream           bool
 }
 
@@ -54,12 +55,12 @@ func (c *Client) TTSCompletion(ctx context.Context, req TTSRequest) (*http.Respo
 	})
 
 	// Determine model name
-	model := "mimo-v2.5-tts"
+	model := req.ModelVersion + "-tts"
 	switch req.ModelVariant {
 	case "design":
-		model = "mimo-v2.5-tts-voicedesign"
+		model = req.ModelVersion + "-tts-voicedesign"
 	case "clone":
-		model = "mimo-v2.5-tts-voiceclone"
+		model = req.ModelVersion + "-tts-voiceclone"
 	}
 
 	// Audio configuration

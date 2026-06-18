@@ -84,10 +84,15 @@ func DeleteSession(database *db.DB) gin.HandlerFunc {
 
 // GenerateTitle calls MiMo API to generate a concise session title based on
 // the first user message, then updates the session in DB.
-func GenerateTitle(database *db.DB, client *mimo.Client) gin.HandlerFunc {
+func GenerateTitle(database *db.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sessionID := c.Param("session_id")
 		user := middleware.GetAuthUser(c)
+		sess, err := getMiMoSession(database, user.UserID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 
 		session, err := db.GetSession(c.Request.Context(), database, sessionID)
 		if err != nil || session == nil || session.UserID != user.UserID {
@@ -120,7 +125,7 @@ func GenerateTitle(database *db.DB, client *mimo.Client) gin.HandlerFunc {
 			{Role: "user", Content: mimo.TextContent(prompt)},
 		}
 
-		resp, err := client.ChatCompletion(c.Request.Context(), "mimo-v2.5", messages, false, nil)
+		resp, err := sess.Client.ChatCompletion(context.Background(), sess.ModelVersion, messages, false, nil)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to generate title"})
 			return
@@ -161,7 +166,7 @@ func GenerateTitle(database *db.DB, client *mimo.Client) gin.HandlerFunc {
 }
 
 // SendMessage sends a message to a chat session and returns the assistant's response.
-func SendMessage(database *db.DB, client *mimo.Client, uploadDir string) gin.HandlerFunc {
+func SendMessage(database *db.DB, uploadDir string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		sessionID := c.Param("session_id")
 
@@ -177,6 +182,11 @@ func SendMessage(database *db.DB, client *mimo.Client, uploadDir string) gin.Han
 		}
 
 		user := middleware.GetAuthUser(c)
+		sess, err := getMiMoSession(database, user.UserID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 
 		// Verify session ownership.
 		session, err := db.GetSession(c.Request.Context(), database, sessionID)
@@ -279,7 +289,7 @@ func SendMessage(database *db.DB, client *mimo.Client, uploadDir string) gin.Han
 
 		// Call MiMo API with background context (detached from browser connection).
 		// If browser navigates away mid-stream, the API continues and message is saved to DB.
-		resp, err := client.ChatCompletion(context.Background(), session.Model, messages, req.Stream, nil)
+		resp, err := sess.Client.ChatCompletion(context.Background(), sess.ModelVersion, messages, req.Stream, nil)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to call AI API"})
 			return

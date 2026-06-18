@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"mimo-webui/internal/db"
+	"mimo-webui/internal/middleware"
 	"mimo-webui/internal/mimo"
 )
 
@@ -18,8 +20,14 @@ type audioRequest struct {
 
 // AudioUnderstandingHandler returns a handler that sends audio to the MiMo
 // API for understanding, optionally streaming the response via SSE.
-func AudioUnderstandingHandler(client *mimo.Client, uploadDir string) gin.HandlerFunc {
+func AudioUnderstandingHandler(database *db.DB, uploadDir string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		user := middleware.GetAuthUser(c)
+		sess, err := getMiMoSession(database, user.UserID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
 		var req audioRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
@@ -55,7 +63,7 @@ func AudioUnderstandingHandler(client *mimo.Client, uploadDir string) gin.Handle
 		userMsg := mimo.Message{Role: "user", Content: mimo.MultiContent([]mimo.ContentPart{mediaPart, textPart})}
 		messages := []mimo.Message{systemMsg, userMsg}
 
-		resp, err := client.ChatCompletion(c.Request.Context(), "mimo-v2.5", messages, req.Stream, nil)
+		resp, err := sess.Client.ChatCompletion(c.Request.Context(), sess.ModelVersion, messages, req.Stream, nil)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "chat completion: " + err.Error()})
 			return

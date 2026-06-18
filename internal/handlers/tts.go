@@ -7,6 +7,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"mimo-webui/internal/db"
+	"mimo-webui/internal/middleware"
 	"mimo-webui/internal/mimo"
 )
 
@@ -24,8 +26,15 @@ type ttsRequest struct {
 
 // TTSHandler returns a handler that sends text to the MiMo API for
 // text-to-speech synthesis, optionally streaming the response via SSE.
-func TTSHandler(client *mimo.Client, uploadDir string) gin.HandlerFunc {
+func TTSHandler(database *db.DB, uploadDir string) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		user := middleware.GetAuthUser(c)
+		sess, err := getMiMoSession(database, user.UserID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
 		var req ttsRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body: " + err.Error()})
@@ -69,10 +78,11 @@ func TTSHandler(client *mimo.Client, uploadDir string) gin.HandlerFunc {
 			Voice:            req.Voice,
 			AudioFormat:      req.AudioFormat,
 			ModelVariant:     req.ModelVariant,
+			ModelVersion:     sess.ModelVersion,
 			Stream:           req.Stream,
 		}
 
-		resp, err := client.TTSCompletion(c.Request.Context(), ttsReq)
+		resp, err := sess.Client.TTSCompletion(c.Request.Context(), ttsReq)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "tts completion: " + err.Error()})
 			return

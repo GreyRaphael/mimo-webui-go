@@ -13,7 +13,7 @@
     <link rel="stylesheet" href="/static/css/custom.css">
     <script src="/static/js/app.js"></script>
 </head>
-<body class="h-full bg-gray-900 text-gray-100" x-data="mobileNavApp()">
+<body class="h-full bg-gray-900 text-gray-100" x-data="mobileNavApp()" x-init="loadSettings()">
 
 <!-- Mobile: Nav overlay -->
 <div x-show="navOpen" @click="closeNav()" class="md:hidden fixed inset-0 bg-black/50 z-40" style="display:none"></div>
@@ -47,7 +47,10 @@
     <div class="p-3 border-t border-gray-700 text-sm text-gray-400">
         {{if .user}}
         <div class="flex items-center justify-between">
-            <span>👤 {{.user.Username}}</span>
+            <button @click="showSettings = true; navOpen = false" class="flex items-center gap-2 hover:text-blue-400 transition cursor-pointer">
+                <span>👤 {{.user.Username}}</span>
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+            </button>
             <a href="/login" class="text-red-400 hover:text-red-300" onclick="document.cookie='token=;path=/;max-age=0'">退出</a>
         </div>
         {{end}}
@@ -342,6 +345,41 @@ function asrApp() {
 </script>
         </main>
     </div>
+
+<!-- Settings Modal -->
+<div x-show="showSettings" x-cloak class="fixed inset-0 bg-black/50 z-[70] flex items-center justify-center p-4" @click.self="showSettings = false" style="display:none">
+    <div class="bg-gray-800 rounded-xl border border-gray-700 w-full max-w-md p-6 space-y-4">
+        <div class="flex items-center justify-between">
+            <h3 class="text-lg font-semibold text-gray-200">⚙️ 设置</h3>
+            <button @click="showSettings = false" class="text-gray-400 hover:text-white p-1">✕</button>
+        </div>
+        <div>
+            <label class="text-sm font-medium text-gray-300 mb-1 block">API Base URL</label>
+            <input type="url" x-model="settingsForm.base_url" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="https://api.xiaomimimo.com/v1" required>
+            <p class="text-xs text-gray-500 mt-1">必填，例如 https://api.xiaomimimo.com/v1</p>
+        </div>
+        <div>
+            <label class="text-sm font-medium text-gray-300 mb-1 block">模型版本</label>
+            <input type="text" x-model="settingsForm.model_version"
+                class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                placeholder="mimo-v2.5">
+            <p class="text-xs text-gray-500 mt-1">基础模型名，自动拼接后缀：-asr / -tts / -tts-voicedesign / -tts-voiceclone</p>
+        </div>
+        <div>
+            <label class="text-sm font-medium text-gray-300 mb-1 block">API Key</label>
+            <input type="password" x-model="settingsForm.api_key" class="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-gray-100 text-sm focus:ring-2 focus:ring-blue-500 outline-none" placeholder="输入你的 MiMo API Key" required>
+        </div>
+        <div class="flex gap-2 justify-end">
+            <button @click="showSettings = false" class="px-4 py-2 bg-gray-600 hover:bg-gray-500 rounded-lg text-sm transition">取消</button>
+            <button @click="saveSettings()" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg text-sm transition" :disabled="settingsSaving">
+                <span x-show="!settingsSaving">保存</span>
+                <span x-show="settingsSaving">保存中...</span>
+            </button>
+        </div>
+        <div x-show="settingsSaved" class="text-green-400 text-sm text-center">✓ 已保存</div>
+    </div>
+</div>
+
 </body>
 </html>
 {{end}}

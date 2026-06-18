@@ -1,16 +1,46 @@
 // MiMo WebUI - Main Application JavaScript
 
 // ============================================================
-// Mobile nav drawer state
+// Mobile nav drawer + settings modal state
 // ============================================================
 function mobileNavApp() {
     return {
         navOpen: false,
-        sessionDrawerOpen: false,
+        showSettings: false,
+        settingsForm: { base_url: '', api_key: '', model_version: 'mimo-v2.5' },
+        settingsSaving: false,
+        settingsSaved: false,
+
         toggleNav() { this.navOpen = !this.navOpen; },
         closeNav() { this.navOpen = false; },
-        toggleSessionDrawer() { this.sessionDrawerOpen = !this.sessionDrawerOpen; },
-        closeSessionDrawer() { this.sessionDrawerOpen = false; }
+
+        async loadSettings() {
+            try {
+                const resp = await fetch('/api/settings');
+                if (resp.ok) {
+                    const data = await resp.json();
+                    this.settingsForm.base_url = data.base_url || '';
+                    this.settingsForm.api_key = data.api_key || '';
+                    this.settingsForm.model_version = data.model_version || 'mimo-v2.5';
+                }
+            } catch (e) { console.error('loadSettings:', e); }
+        },
+        async saveSettings() {
+            this.settingsSaving = true;
+            this.settingsSaved = false;
+            try {
+                const resp = await fetch('/api/settings', {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(this.settingsForm)
+                });
+                if (resp.ok) {
+                    this.settingsSaved = true;
+                    setTimeout(() => { this.settingsSaved = false; this.showSettings = false; }, 1500);
+                }
+            } catch (e) { console.error('saveSettings:', e); }
+            finally { this.settingsSaving = false; }
+        }
     };
 }
 
