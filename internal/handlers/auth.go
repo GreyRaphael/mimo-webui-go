@@ -73,7 +73,11 @@ func LoginHandler(database *db.DB, cfg config.AuthConfig) gin.HandlerFunc {
 
 		_ = db.UpdateLastLogin(c.Request.Context(), database, user.ID)
 
-		c.SetCookie("token", token, cfg.JWTExpiryHours*3600, "/", "", false, true)
+		// Set Secure flag when the request is HTTPS (direct TLS or behind a
+		// reverse proxy that forwards X-Forwarded-Proto), so the cookie is only
+		// sent over encrypted channels in production.
+		secure := c.Request.TLS != nil || c.GetHeader("X-Forwarded-Proto") == "https"
+		c.SetCookie("token", token, cfg.JWTExpiryHours*3600, "/", "", secure, true)
 		c.Redirect(http.StatusFound, "/")
 	}
 }

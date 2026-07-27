@@ -21,7 +21,7 @@ func ChatSessionPage() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.HTML(http.StatusOK, "pages/chat.html", gin.H{
 			"user":       middleware.GetAuthUser(c),
-			"session_id": c.Param("id"),
+			"session_id": c.Param("session_id"),
 		})
 	}
 }

@@ -3,9 +3,7 @@ package mimo
 import (
 	"bufio"
 	"encoding/json"
-	"fmt"
 	"io"
-	"os"
 	"strings"
 )
 
@@ -85,7 +83,6 @@ func ProcessSSEStream(reader io.Reader, events chan<- SSEEvent) {
 		// Send actual content — even a space " " is meaningful
 		if delta.Content != nil {
 			events <- SSEEvent{Type: "message", Content: *delta.Content}
-			fmt.Fprintf(os.Stderr, "[SSE-DEBUG] content=%q len=%d\n", *delta.Content, len(*delta.Content))
 		}
 
 		// Audio data

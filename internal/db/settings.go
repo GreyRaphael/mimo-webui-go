@@ -1,8 +1,12 @@
 package db
 
-import "context"
+import (
+	"context"
+	"database/sql"
+)
 
 // GetSetting returns a setting value for a user, or empty string if not set.
+// Only sql.ErrNoRows is treated as "not set"; any other error is returned.
 func GetSetting(ctx context.Context, db *DB, userID int64, name string) (string, error) {
 	var value string
 	err := db.QueryRowContext(ctx,
@@ -10,7 +14,10 @@ func GetSetting(ctx context.Context, db *DB, userID int64, name string) (string,
 		userID, name,
 	).Scan(&value)
 	if err != nil {
-		return "", nil // not found is not an error
+		if err == sql.ErrNoRows {
+			return "", nil // not set is not an error
+		}
+		return "", err
 	}
 	return value, nil
 }

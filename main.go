@@ -68,11 +68,16 @@ func main() {
 	r.StaticFS("/static", http.FS(staticSub))
 
 	// CORS
+	// NOTE: AllowOrigins ["*"] is incompatible with AllowCredentials per the CORS
+	// spec. This app is same-origin (templates + static files served by the backend),
+	// so we allow all origins without credentials. If you need credentialed
+	// cross-origin access, replace AllowOrigins with an explicit whitelist and set
+	// AllowCredentials: true.
 	r.Use(cors.New(cors.Config{
 		AllowOrigins:     []string{"*"},
 		AllowMethods:     []string{"GET", "POST", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "Authorization"},
-		AllowCredentials: true,
+		AllowCredentials: false,
 	}))
 
 	setupRoutes(r, database, cfg)
