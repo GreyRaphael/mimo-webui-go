@@ -17,6 +17,10 @@ function mobileNavApp() {
         async loadSettings() {
             try {
                 const resp = await fetch('/api/settings');
+                if (resp.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
                 if (resp.ok) {
                     const data = await resp.json();
                     this.settingsForm.base_url = data.base_url || '';
@@ -34,6 +38,10 @@ function mobileNavApp() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(this.settingsForm)
                 });
+                if (resp.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
                 if (resp.ok) {
                     this.settingsSaved = true;
                     setTimeout(() => { this.settingsSaved = false; this.showSettings = false; }, 1500);
@@ -42,6 +50,21 @@ function mobileNavApp() {
             finally { this.settingsSaving = false; }
         }
     };
+}
+
+// Global safe markdown renderer with XSS protection via DOMPurify
+function renderMarkdownSafe(text) {
+    if (!text) return '';
+    try {
+        text = text
+            .replace(/^(#{1,6})([^\s#])/gm, '$1 $2')
+            .replace(/^([-*+])([^\s])/gm, '$1 $2');
+        const rawHtml = typeof marked !== 'undefined' ? marked.parse(text) : text;
+        return typeof DOMPurify !== 'undefined' ? DOMPurify.sanitize(rawHtml) : rawHtml;
+    } catch (e) {
+        const escaped = text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        return escaped.replace(/\n/g, '<br>');
+    }
 }
 
 // ============================================================

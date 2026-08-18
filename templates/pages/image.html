@@ -10,6 +10,7 @@
     <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
     <link rel="stylesheet" href="/static/css/custom.css">
     <script src="/static/js/app.js"></script>
 </head>
@@ -314,21 +315,7 @@ function imageApp() {
         },
 
         renderMarkdown(text) {
-            if (!text) return '';
-            if (typeof marked !== 'undefined') {
-                try {
-                    if (!this._markedConfigured) {
-                        marked.setOptions({ breaks: true, gfm: true, silent: true });
-                        this._markedConfigured = true;
-                    }
-                    // Preprocess: fix common markdown issues from LLM output
-                    text = text
-                        .replace(/^(#{1,6})([^\s#])/gm, '$1 $2')
-                        .replace(/^([-*+])([^\s])/gm, '$1 $2');
-                    return marked.parse(text);
-                } catch(e) { return text.replace(/\n/g, '<br>'); }
-            }
-            return text.replace(/\n/g, '<br>');
+            return renderMarkdownSafe(text);
         },
 
         clearAll() {

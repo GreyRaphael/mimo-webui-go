@@ -10,6 +10,7 @@
     <script defer src="https://unpkg.com/alpinejs@3.14.8/dist/cdn.min.js"></script>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.4/dist/purify.min.js"></script>
     <link rel="stylesheet" href="/static/css/custom.css">
     <script src="/static/js/app.js"></script>
 </head>
@@ -308,15 +309,7 @@ function chatApp() {
         // Markdown rendering (used for both streaming & static)
         // -------------------------------------------------------
         renderMarkdown(text) {
-            if (!text) return '';
-            try {
-                text = text
-                    .replace(/^(#{1,6})([^\s#])/gm, '$1 $2')
-                    .replace(/^([-*+])([^\s])/gm, '$1 $2');
-                return marked.parse(text);
-            } catch (e) {
-                return text.replace(/\n/g, '<br>');
-            }
+            return renderMarkdownSafe(text);
         },
 
         // -------------------------------------------------------
@@ -383,6 +376,10 @@ function chatApp() {
         async loadSessions() {
             try {
                 const resp = await fetch('/api/sessions');
+                if (resp.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
                 if (resp.ok) {
                     const data = await resp.json();
                     this.sessions = Array.isArray(data) ? data : [];
@@ -399,6 +396,10 @@ function chatApp() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ title: '新对话', model: 'mimo-v2.5' })
                 });
+                if (resp.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
                 if (resp.ok) {
                     const session = await resp.json();
                     if (!session || !session.id) {
@@ -427,6 +428,10 @@ function chatApp() {
         async loadMessages(sessionId) {
             try {
                 const resp = await fetch('/api/sessions/' + sessionId + '/messages');
+                if (resp.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
                 if (resp.ok) {
                     const msgs = await resp.json();
                     if (Array.isArray(msgs)) {
@@ -683,6 +688,10 @@ function chatApp() {
         async loadSettings() {
             try {
                 const resp = await fetch('/api/settings');
+                if (resp.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
                 if (resp.ok) {
                     const data = await resp.json();
                     this.settingsForm.base_url = data.base_url || '';
@@ -704,6 +713,10 @@ function chatApp() {
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(this.settingsForm)
                 });
+                if (resp.status === 401) {
+                    window.location.href = '/login';
+                    return;
+                }
                 if (resp.ok) {
                     this.settingsSaved = true;
                     setTimeout(() => { this.settingsSaved = false; this.showSettings = false; }, 1500);

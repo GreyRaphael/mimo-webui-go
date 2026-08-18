@@ -20,8 +20,5 @@ temp_dir = "/tmp/mimo-uploads"
 cleanup_interval_minutes = 30
 file_expiry_minutes = 60
 
-[rate_limit]
-requests_per_minute = 30
-
 [database]
 path = "/etc/mimo-webui/mimo-webui.db"

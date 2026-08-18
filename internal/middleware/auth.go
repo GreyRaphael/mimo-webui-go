@@ -30,7 +30,7 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 		}
 
 		if tokenStr == "" {
-			if isHTMX(c) {
+			if isAPIRequest(c) {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "未登录"})
 			} else {
 				c.Redirect(http.StatusFound, "/login")
@@ -41,7 +41,7 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 
 		claims, err := auth.ValidateToken(jwtSecret, tokenStr)
 		if err != nil {
-			if isHTMX(c) {
+			if isAPIRequest(c) {
 				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "登录已过期"})
 			} else {
 				c.Redirect(http.StatusFound, "/login")
@@ -62,6 +62,10 @@ func AuthMiddleware(jwtSecret string) gin.HandlerFunc {
 func GetAuthUser(c *gin.Context) AuthUser {
 	user, _ := c.Get("user")
 	return user.(AuthUser)
+}
+
+func isAPIRequest(c *gin.Context) bool {
+	return strings.HasPrefix(c.Request.URL.Path, "/api/") || isHTMX(c) || strings.Contains(c.GetHeader("Accept"), "application/json")
 }
 
 func isHTMX(c *gin.Context) bool {

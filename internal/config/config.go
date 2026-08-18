@@ -8,11 +8,10 @@ import (
 )
 
 type Config struct {
-	Server    ServerConfig
-	Auth      AuthConfig
-	Upload    UploadConfig
-	RateLimit RateLimitConfig
-	Database  DatabaseConfig
+	Server   ServerConfig
+	Auth     AuthConfig
+	Upload   UploadConfig
+	Database DatabaseConfig
 }
 
 type ServerConfig struct {
@@ -37,10 +36,6 @@ type UploadConfig struct {
 	FileExpiryMin      int    `toml:"file_expiry_minutes"`
 }
 
-type RateLimitConfig struct {
-	RequestsPerMinute int `toml:"requests_per_minute"`
-}
-
 type DatabaseConfig struct {
 	Path string
 }
@@ -61,8 +56,7 @@ func Load(path string) (*Config, error) {
 			CleanupIntervalMin: 30,
 			FileExpiryMin:      60,
 		},
-		RateLimit: RateLimitConfig{RequestsPerMinute: 30},
-		Database:  DatabaseConfig{Path: "mimo-webui.db"},
+		Database: DatabaseConfig{Path: "mimo-webui.db"},
 	}
 
 	data, err := os.ReadFile(path)
